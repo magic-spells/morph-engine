@@ -1,0 +1,69 @@
+{
+	"name": "@magic-spells/morph-engine",
+	"version": "0.1.0",
+	"description": "Shared-element morph engine — a spring-driven blob morphs from a source element's rect and styles to a target's, so UI grows out of what you clicked",
+	"author": "Cory Schulz",
+	"license": "MIT",
+	"type": "module",
+	"main": "dist/morph-engine.esm.js",
+	"module": "dist/morph-engine.esm.js",
+	"unpkg": "dist/morph-engine.min.js",
+	"exports": {
+		".": {
+			"import": "./dist/morph-engine.esm.js",
+			"default": "./dist/morph-engine.esm.js"
+		}
+	},
+	"sideEffects": false,
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/magic-spells/morph-engine"
+	},
+	"homepage": "https://github.com/magic-spells/morph-engine#readme",
+	"bugs": {
+		"url": "https://github.com/magic-spells/morph-engine/issues"
+	},
+	"keywords": [
+		"morph",
+		"shared-element",
+		"container-transform",
+		"transition",
+		"spring",
+		"physics",
+		"animation",
+		"flip",
+		"genie"
+	],
+	"files": [
+		"dist/"
+	],
+	"scripts": {
+		"build": "NODE_ENV=production node scripts/build.mjs",
+		"dev": "NODE_ENV=development node scripts/build.mjs",
+		"lint": "eslint src/ scripts/",
+		"format": "prettier --write .",
+		"prepublishOnly": "npm run build"
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"browserslist": [
+		"last 2 versions",
+		"not dead",
+		"not ie <= 11"
+	],
+	"dependencies": {
+		"@magic-spells/frame-engine": "^1.0.0",
+		"@magic-spells/physics-engine": "^1.0.0"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.38.0",
+		"@magic-spells/vite-plugin-live-reload": "^0.1.0",
+		"eslint": "^9.38.0",
+		"globals": "^15.15.0",
+		"prettier": "^3.3.3",
+		"terser": "^5.16.0",
+		"vite": "^8.0.10"
+	}
+}

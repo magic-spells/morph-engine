@@ -1,0 +1,1446 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<title>Morph Engine — @magic-spells</title>
+
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=Outfit:wght@200;300;400;500&display=swap"
+			rel="stylesheet" />
+
+		<style>
+			:root {
+				--bg-deep: #08070d;
+				--bg-card: #12101a;
+				--bg-card-hover: #16131f;
+				--bg-panel: #171423;
+				--bg-options: #191527;
+				--border: #201c2d;
+				--border-accent: #2d2740;
+				--violet: #a78bfa;
+				--violet-dim: #6d5ba6;
+				--violet-glow: rgba(167, 139, 250, 0.12);
+				--cream: #e6e2f0;
+				--cream-dim: #96919f;
+				--text: #bdb8c9;
+				--text-dim: #67626f;
+				--font-display: 'Cormorant Garamond', Georgia, serif;
+				--font-body: 'Outfit', system-ui, sans-serif;
+			}
+
+			* {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+
+			html {
+				scroll-behavior: smooth;
+				background: var(--bg-deep);
+			}
+
+			body {
+				font-family: var(--font-body);
+				font-weight: 300;
+				color: var(--text);
+				background: var(--bg-deep);
+				overflow-x: hidden;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			/* ---- Noise overlay ---- */
+			body::before {
+				content: '';
+				position: fixed;
+				inset: 0;
+				z-index: 2000;
+				pointer-events: none;
+				opacity: 0.025;
+				background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+				background-repeat: repeat;
+				background-size: 256px;
+			}
+
+			/* ---- Hero ---- */
+			.hero {
+				position: relative;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				padding: 4.5rem 2rem 1.5rem;
+				text-align: center;
+			}
+
+			.hero::before {
+				content: '';
+				position: absolute;
+				top: -40%;
+				left: 50%;
+				transform: translateX(-50%);
+				width: 900px;
+				height: 900px;
+				background: radial-gradient(ellipse, var(--violet-glow) 0%, transparent 70%);
+				pointer-events: none;
+			}
+
+			.hero-badge {
+				font-size: 0.7rem;
+				font-weight: 400;
+				letter-spacing: 0.25em;
+				text-transform: uppercase;
+				color: var(--violet);
+				border: 1px solid var(--border-accent);
+				padding: 0.4em 1.4em;
+				border-radius: 100px;
+				margin-bottom: 2.2rem;
+			}
+
+			.hero h1 {
+				font-family: var(--font-display);
+				font-weight: 300;
+				font-size: clamp(3rem, 7vw, 5rem);
+				line-height: 1.05;
+				color: var(--cream);
+				margin-bottom: 1.1rem;
+			}
+
+			.hero h1 em {
+				font-style: italic;
+				color: var(--violet);
+			}
+
+			.hero p {
+				max-width: 34rem;
+				font-size: 1rem;
+				line-height: 1.7;
+				color: var(--cream-dim);
+			}
+
+			/* ---- Sections ---- */
+			.section {
+				max-width: 960px;
+				margin: 0 auto;
+				padding: 3.5rem 2rem 1rem;
+			}
+
+			.section-label {
+				font-size: 0.7rem;
+				font-weight: 400;
+				letter-spacing: 0.22em;
+				text-transform: uppercase;
+				color: var(--violet);
+				margin-bottom: 0.6rem;
+			}
+
+			.section-title {
+				font-family: var(--font-display);
+				font-weight: 400;
+				font-size: 1.9rem;
+				color: var(--cream);
+				margin-bottom: 0.5rem;
+			}
+
+			.section-note {
+				font-size: 0.9rem;
+				line-height: 1.65;
+				color: var(--text-dim);
+				max-width: 40rem;
+				margin-bottom: 2rem;
+			}
+
+			.section-note b {
+				font-weight: 400;
+				color: var(--cream-dim);
+			}
+
+			/* ---- Task cards ---- */
+			.task-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				gap: 1rem;
+			}
+
+			.task-card {
+				appearance: none;
+				font: inherit;
+				text-align: left;
+				cursor: pointer;
+				display: flex;
+				flex-direction: column;
+				gap: 0.7rem;
+				padding: 1.2rem 1.3rem 1.1rem;
+				color: var(--text);
+				background-color: var(--bg-card);
+				border: 1px solid var(--border);
+				border-radius: 0.875rem;
+				box-shadow: 0 2px 10px rgba(3, 2, 8, 0.35);
+				transition:
+					border-color 0.25s ease,
+					background-color 0.25s ease;
+			}
+
+			.task-card:hover {
+				border-color: var(--border-accent);
+				background-color: var(--bg-card-hover);
+			}
+
+			.task-card:focus-visible {
+				outline: 1px solid var(--violet-dim);
+				outline-offset: 2px;
+			}
+
+			.tag {
+				align-self: flex-start;
+				font-size: 0.62rem;
+				font-weight: 500;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				padding: 0.32em 0.9em;
+				border-radius: 100px;
+			}
+
+			.tag-design {
+				color: #a78bfa;
+				background: rgba(167, 139, 250, 0.1);
+			}
+
+			.tag-build {
+				color: #7dd3a8;
+				background: rgba(125, 211, 168, 0.09);
+			}
+
+			.tag-research {
+				color: #6fb7e8;
+				background: rgba(111, 183, 232, 0.09);
+			}
+
+			.tag-bug {
+				color: #e8837d;
+				background: rgba(232, 131, 125, 0.09);
+			}
+
+			.task-title {
+				font-weight: 400;
+				font-size: 1.02rem;
+				color: var(--cream);
+				line-height: 1.35;
+			}
+
+			.task-snippet {
+				font-size: 0.83rem;
+				line-height: 1.55;
+				color: var(--text-dim);
+				display: -webkit-box;
+				-webkit-line-clamp: 2;
+				-webkit-box-orient: vertical;
+				overflow: hidden;
+			}
+
+			.task-meta {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				margin-top: 0.35rem;
+			}
+
+			.task-due {
+				font-size: 0.72rem;
+				letter-spacing: 0.06em;
+				color: var(--text-dim);
+			}
+
+			.avatar {
+				display: grid;
+				place-items: center;
+				width: 1.7rem;
+				height: 1.7rem;
+				border-radius: 50%;
+				font-size: 0.62rem;
+				font-weight: 500;
+				letter-spacing: 0.04em;
+				color: var(--cream);
+				background: linear-gradient(135deg, #3d3357, #262038);
+				border: 1px solid var(--border-accent);
+			}
+
+			/* ---- Backdrop ---- */
+			.backdrop {
+				position: fixed;
+				inset: 0;
+				z-index: 900;
+				background: rgba(5, 4, 10, 0.65);
+				opacity: 0;
+				pointer-events: none;
+				transition: opacity 0.3s ease;
+			}
+
+			.backdrop[visible] {
+				opacity: 1;
+				pointer-events: auto;
+			}
+
+			/* ---- Task panel ----
+			   Hidden with visibility only — the engine drives inline opacity during
+			   the reveal, so the stylesheet must never set opacity on a morph target.
+			   Centered with inset + margin, never transform (the engine owns transform). */
+			.task-panel {
+				position: fixed;
+				inset: 0;
+				margin: auto;
+				z-index: 950;
+				width: min(560px, calc(100vw - 3rem));
+				height: min(540px, calc(100vh - 6rem));
+				visibility: hidden;
+				display: flex;
+				flex-direction: column;
+				padding: 2.1rem 2.2rem 1.9rem;
+				background-color: var(--bg-panel);
+				border: 1px solid var(--border-accent);
+				border-radius: 1.5rem;
+				box-shadow: 0 30px 90px rgba(2, 1, 6, 0.75);
+			}
+
+			.panel-top {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				margin-bottom: 1.1rem;
+			}
+
+			.panel-close {
+				appearance: none;
+				border: 1px solid var(--border);
+				background: transparent;
+				color: var(--text-dim);
+				width: 2.1rem;
+				height: 2.1rem;
+				border-radius: 50%;
+				font-size: 1rem;
+				line-height: 1;
+				cursor: pointer;
+				transition:
+					color 0.2s ease,
+					border-color 0.2s ease;
+			}
+
+			.panel-close:hover {
+				color: var(--cream);
+				border-color: var(--border-accent);
+			}
+
+			.panel-title {
+				font-family: var(--font-display);
+				font-weight: 400;
+				font-size: 1.9rem;
+				line-height: 1.15;
+				color: var(--cream);
+				margin-bottom: 1rem;
+			}
+
+			.panel-description {
+				font-size: 0.92rem;
+				line-height: 1.7;
+				color: var(--text);
+				overflow-y: auto;
+				flex: 1;
+			}
+
+			.panel-meta {
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				gap: 1rem;
+				padding: 1.1rem 0;
+				margin-top: 1.2rem;
+				border-top: 1px solid var(--border);
+			}
+
+			.meta-item {
+				display: flex;
+				flex-direction: column;
+				gap: 0.2rem;
+			}
+
+			.meta-key {
+				font-size: 0.62rem;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+			}
+
+			.meta-val {
+				font-size: 0.85rem;
+				color: var(--cream-dim);
+			}
+
+			.panel-actions {
+				display: flex;
+				gap: 0.7rem;
+			}
+
+			.btn {
+				appearance: none;
+				font: inherit;
+				font-size: 0.8rem;
+				font-weight: 400;
+				letter-spacing: 0.08em;
+				padding: 0.65em 1.6em;
+				border-radius: 100px;
+				cursor: pointer;
+				transition:
+					background-color 0.2s ease,
+					border-color 0.2s ease,
+					color 0.2s ease;
+			}
+
+			.btn-primary {
+				color: #0e0b16;
+				background: var(--violet);
+				border: 1px solid var(--violet);
+			}
+
+			.btn-primary:hover {
+				background: #b9a3fb;
+			}
+
+			.btn-ghost {
+				color: var(--cream-dim);
+				background: transparent;
+				border: 1px solid var(--border-accent);
+			}
+
+			.btn-ghost:hover {
+				color: var(--cream);
+				border-color: var(--violet-dim);
+			}
+
+			/* ---- Dropdown demo ---- */
+			.dropdown-row {
+				display: flex;
+				align-items: center;
+				gap: 1.2rem;
+			}
+
+			.dropdown-label {
+				font-size: 0.78rem;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+			}
+
+			.dropdown-wrap {
+				position: relative;
+			}
+
+			.dropdown-trigger {
+				appearance: none;
+				font: inherit;
+				font-size: 0.88rem;
+				display: flex;
+				align-items: center;
+				gap: 2.2rem;
+				cursor: pointer;
+				padding: 0.7rem 1.1rem;
+				color: var(--cream-dim);
+				background-color: var(--bg-card);
+				border: 1px solid var(--border);
+				border-radius: 0.625rem;
+				box-shadow: 0 2px 8px rgba(3, 2, 8, 0.3);
+				transition: border-color 0.25s ease;
+			}
+
+			.dropdown-trigger:hover {
+				border-color: var(--border-accent);
+			}
+
+			.dropdown-caret {
+				font-size: 0.6rem;
+				color: var(--text-dim);
+			}
+
+			/* Overlaps the trigger — the options "grow out of" it (visibility-hidden
+			   so it measures cleanly; no opacity in the stylesheet). */
+			.dropdown-options {
+				position: absolute;
+				top: 0;
+				left: 0;
+				z-index: 600;
+				width: 15rem;
+				visibility: hidden;
+				padding: 0.5rem;
+				background-color: var(--bg-options);
+				border: 1px solid var(--border-accent);
+				border-radius: 0.875rem;
+				box-shadow: 0 18px 50px rgba(2, 1, 6, 0.6);
+			}
+
+			.dropdown-option {
+				appearance: none;
+				font: inherit;
+				font-size: 0.86rem;
+				display: block;
+				width: 100%;
+				text-align: left;
+				cursor: pointer;
+				padding: 0.55rem 0.8rem;
+				color: var(--text);
+				background: transparent;
+				border: none;
+				border-radius: 0.5rem;
+				transition: background-color 0.15s ease;
+			}
+
+			.dropdown-option:hover {
+				color: var(--cream);
+				background: rgba(167, 139, 250, 0.08);
+			}
+
+			/* ---- Real <dialog> ----
+			   Closed = UA display:none — the engine flips it on invisibly to measure,
+			   then drives inline display during the flight (the dialog stays CLOSED,
+			   rendering in normal flow). At `reveal` — still opacity 0 — it's promoted
+			   with showModal() (promoting at settle repaints a visible surface).
+			   max-width/height: none keeps the in-flow and :modal geometry identical.
+			   ::backdrop stays transparent — the page scrim owns the dimming so both
+			   phases share one continuous surface. */
+			.morph-dialog {
+				position: fixed;
+				inset: 0;
+				margin: auto;
+				z-index: 950;
+				width: min(560px, calc(100vw - 3rem));
+				height: min(520px, calc(100vh - 6rem));
+				max-width: none;
+				max-height: none;
+				flex-direction: column;
+				padding: 2.1rem 2.2rem 1.9rem;
+				color: var(--text);
+				background-color: var(--bg-panel);
+				border: 1px solid var(--border-accent);
+				border-radius: 1.5rem;
+				box-shadow: 0 30px 90px rgba(2, 1, 6, 0.75);
+			}
+
+			.morph-dialog[open] {
+				display: flex;
+			}
+
+			.morph-dialog::backdrop {
+				background: transparent;
+			}
+
+			.release-card {
+				max-width: 340px;
+			}
+
+			.panel-description p + p {
+				margin-top: 0.8em;
+			}
+
+			/* ---- Confirm dialog ----
+			   The pill → panel is the widest geometry jump here: ~9rem of pill into a
+			   full modal, radius 100px → 1.25rem. The pill's 1px edge has nowhere to
+			   land — the engine holds the edge color while its width collapses to 0, so
+			   the line recedes instead of flashing toward the text color. Same
+			   closed-then-showModal() handoff as .morph-dialog. */
+			.confirm-pill {
+				appearance: none;
+				font: inherit;
+				font-size: 0.85rem;
+				letter-spacing: 0.04em;
+				cursor: pointer;
+				padding: 0.7rem 1.4rem;
+				color: var(--cream-dim);
+				background-color: var(--bg-card);
+				border: 1px solid var(--border-accent);
+				border-radius: 100px;
+				box-shadow: 0 2px 8px rgba(3, 2, 8, 0.3);
+				transition:
+					color 0.25s ease,
+					border-color 0.25s ease,
+					background-color 0.25s ease;
+			}
+
+			.confirm-pill:hover {
+				color: var(--cream);
+				background-color: var(--bg-card-hover);
+				border-color: var(--violet-dim);
+			}
+
+			/* borderless on purpose — same closed→showModal() handoff as .morph-dialog */
+			.morph-confirm {
+				position: fixed;
+				inset: 0;
+				margin: auto;
+				z-index: 950;
+				width: min(26rem, calc(100vw - 3rem));
+				max-width: none;
+				max-height: none;
+				flex-direction: column;
+				padding: 1.9rem 2rem 1.7rem;
+				color: var(--text);
+				background-color: var(--bg-panel);
+				border: none;
+				border-radius: 1.25rem;
+				box-shadow: 0 30px 90px rgba(2, 1, 6, 0.75);
+			}
+
+			.morph-confirm[open] {
+				display: flex;
+			}
+
+			.morph-confirm::backdrop {
+				background: transparent;
+			}
+
+			.confirm-title {
+				font-family: var(--font-display);
+				font-weight: 400;
+				font-size: 1.5rem;
+				line-height: 1.2;
+				color: var(--cream);
+				margin-bottom: 0.7rem;
+			}
+
+			.confirm-body {
+				font-size: 0.9rem;
+				line-height: 1.65;
+				color: var(--text);
+				margin-bottom: 1.6rem;
+			}
+
+			.btn-danger {
+				color: #e8837d;
+				background: rgba(232, 131, 125, 0.09);
+				border: 1px solid transparent;
+			}
+
+			.btn-danger:hover {
+				color: #0e0b16;
+				background: #e8837d;
+				border-color: #e8837d;
+			}
+
+			/* ---- Parameter lab ---- */
+			.lab {
+				display: flex;
+				flex-direction: column;
+				gap: 1.1rem;
+				padding: 1.6rem 1.8rem;
+				background: var(--bg-card);
+				border: 1px solid var(--border);
+				border-radius: 0.875rem;
+			}
+
+			.slider-row {
+				display: flex;
+				align-items: center;
+				gap: 1rem;
+			}
+
+			.slider-label {
+				font-size: 0.7rem;
+				font-weight: 400;
+				letter-spacing: 0.15em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+				min-width: 6.5rem;
+			}
+
+			.slider-value {
+				font-family: 'Courier New', monospace;
+				font-size: 0.85rem;
+				color: var(--violet);
+				min-width: 3.4rem;
+				text-align: right;
+			}
+
+			input[type='range'] {
+				-webkit-appearance: none;
+				appearance: none;
+				flex: 1;
+				height: 2px;
+				background: var(--border-accent);
+				border-radius: 1px;
+				outline: none;
+				cursor: pointer;
+			}
+
+			input[type='range']::-webkit-slider-thumb {
+				-webkit-appearance: none;
+				appearance: none;
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				background: var(--violet);
+				border: none;
+				box-shadow: 0 0 20px rgba(167, 139, 250, 0.35);
+				transition: box-shadow 0.2s ease;
+			}
+
+			input[type='range']::-webkit-slider-thumb:hover {
+				box-shadow: 0 0 30px rgba(167, 139, 250, 0.55);
+			}
+
+			input[type='range']::-moz-range-thumb {
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				background: var(--violet);
+				border: none;
+				box-shadow: 0 0 20px rgba(167, 139, 250, 0.35);
+			}
+
+			.readout {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 1rem 2rem;
+				padding-top: 1.2rem;
+				border-top: 1px solid var(--border);
+			}
+
+			.readout-item {
+				display: flex;
+				flex-direction: column;
+				gap: 0.15rem;
+			}
+
+			.readout-key {
+				font-size: 0.65rem;
+				letter-spacing: 0.12em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+			}
+
+			.readout-val {
+				font-family: 'Courier New', monospace;
+				font-size: 0.78rem;
+				color: var(--cream-dim);
+			}
+
+			/* ---- Code blocks ---- */
+			.code-card {
+				background: #0c0a12;
+				border: 1px solid var(--border);
+				border-radius: 0.875rem;
+				overflow: hidden;
+				margin-bottom: 1.2rem;
+			}
+
+			.code-head {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0.65rem 1.25rem;
+				border-bottom: 1px solid var(--border);
+			}
+
+			.code-step {
+				font-size: 0.65rem;
+				letter-spacing: 0.18em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+			}
+
+			.code-lang {
+				font-size: 0.62rem;
+				letter-spacing: 0.14em;
+				text-transform: uppercase;
+				color: var(--violet-dim);
+			}
+
+			.code-card pre {
+				padding: 1.15rem 1.35rem 1.3rem;
+				overflow-x: auto;
+				font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+				font-size: 0.8rem;
+				line-height: 1.75;
+				color: var(--cream-dim);
+			}
+
+			.tk-com {
+				color: #565064;
+				font-style: italic;
+			}
+
+			.tk-kw {
+				color: var(--violet);
+			}
+
+			.tk-str {
+				color: #7dd3a8;
+			}
+
+			.tk-fn {
+				color: #6fb7e8;
+			}
+
+			.tk-num {
+				color: #e0b97a;
+			}
+
+			.footer {
+				padding: 4rem 2rem 3rem;
+				text-align: center;
+				font-size: 0.75rem;
+				letter-spacing: 0.12em;
+				color: var(--text-dim);
+			}
+
+			.footer a {
+				color: var(--violet-dim);
+				text-decoration: none;
+			}
+		</style>
+	</head>
+
+	<body>
+		<header class="hero">
+			<div class="hero-badge">@magic-spells / morph-engine</div>
+			<h1>Interfaces that <em>become</em><br />each other</h1>
+			<p>
+				A spring-driven blob measures what you clicked, morphs its rect, radius, color, border and
+				shadow into the destination, and hands the bounce to the real element as it lands.
+			</p>
+		</header>
+
+		<main>
+			<section class="section">
+				<div class="section-label">01 · Container transform</div>
+				<h2 class="section-title">Task board</h2>
+				<p class="section-note">
+					Click a task — the details panel grows out of the card.
+					<b>Click the backdrop mid-flight</b> and the spring reverses from wherever it is, even
+					during the overshoot bounce. Close it after scrolling and the blob still finds its card.
+				</p>
+
+				<div class="task-grid">
+					<button
+						class="task-card"
+						data-tag="design"
+						data-title="Refine the onboarding flow"
+						data-description="The current onboarding drops users straight into an empty board with no scaffolding. Sketch a three-step guided setup: workspace naming, first project template, and inviting a teammate. Each step should feel like part of the product, not a wizard bolted on top. Pay attention to how the transitions between steps communicate progress — this is exactly the kind of place a morph should carry context instead of a hard cut."
+						data-due="Jul 18"
+						data-assignee="CS"
+						data-status="In progress"
+						data-priority="High">
+						<span class="tag tag-design">Design</span>
+						<span class="task-title">Refine the onboarding flow</span>
+						<span class="task-snippet"
+							>Three-step guided setup — workspace, template, teammate. Transitions should carry
+							context.</span
+						>
+						<span class="task-meta">
+							<span class="task-due">Jul 18</span>
+							<span class="avatar">CS</span>
+						</span>
+					</button>
+
+					<button
+						class="task-card"
+						data-tag="build"
+						data-title="Ship the realtime sync layer"
+						data-description="Move board updates off polling and onto the websocket channel. The optimistic-update path already exists for drag operations; extend it to card edits and comments, then reconcile against server acks. Watch for the reorder race when two clients move the same card — last-write-wins is fine for the PoC but log the conflicts so we can size the problem."
+						data-due="Jul 22"
+						data-assignee="MK"
+						data-status="Blocked"
+						data-priority="High">
+						<span class="tag tag-build">Build</span>
+						<span class="task-title">Ship the realtime sync layer</span>
+						<span class="task-snippet"
+							>Websockets over polling, optimistic updates for edits and comments, reconcile on
+							ack.</span
+						>
+						<span class="task-meta">
+							<span class="task-due">Jul 22</span>
+							<span class="avatar">MK</span>
+						</span>
+					</button>
+
+					<button
+						class="task-card"
+						data-tag="research"
+						data-title="Audit keyboard navigation"
+						data-description="Run the full board through a keyboard-only session: card focus order, panel open and close, dropdown traversal, escape behavior everywhere. Document every dead end against the ARIA authoring practices. The morph transitions need special attention — focus should land inside the panel when it opens and return to the originating card when it closes, without the animation swallowing it."
+						data-due="Jul 25"
+						data-assignee="AR"
+						data-status="Not started"
+						data-priority="Medium">
+						<span class="tag tag-research">Research</span>
+						<span class="task-title">Audit keyboard navigation</span>
+						<span class="task-snippet"
+							>Keyboard-only session across the board. Focus must survive the transitions.</span
+						>
+						<span class="task-meta">
+							<span class="task-due">Jul 25</span>
+							<span class="avatar">AR</span>
+						</span>
+					</button>
+
+					<button
+						class="task-card"
+						data-tag="bug"
+						data-title="Fix the stuck drag ghost"
+						data-description="On slower machines the drag ghost occasionally sticks to the cursor after drop — the pointerup handler races the rAF that commits the final position. Repro: throttle CPU 6x, drag a card fast, release outside the column. The fix is probably to commit position synchronously on pointerup and let the spring settle from there, same pattern the morph engine uses for its settle handoff."
+						data-due="Jul 15"
+						data-assignee="CS"
+						data-status="In review"
+						data-priority="Urgent">
+						<span class="tag tag-bug">Bug</span>
+						<span class="task-title">Fix the stuck drag ghost</span>
+						<span class="task-snippet"
+							>Drag ghost sticks after drop when pointerup races the commit rAF. Throttle to
+							repro.</span
+						>
+						<span class="task-meta">
+							<span class="task-due">Jul 15</span>
+							<span class="avatar">CS</span>
+						</span>
+					</button>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section-label">02 · Small geometry</div>
+				<h2 class="section-title">Dropdown</h2>
+				<p class="section-note">
+					Same engine, second instance, snappier spring — the trigger grows into its options panel
+					and shrinks back into place.
+				</p>
+
+				<div class="dropdown-row">
+					<span class="dropdown-label">Assignee</span>
+					<div class="dropdown-wrap">
+						<button class="dropdown-trigger">
+							<span data-content-value>Cory Schulz</span>
+							<span class="dropdown-caret">▼</span>
+						</button>
+						<div class="dropdown-options">
+							<button class="dropdown-option">Cory Schulz</button>
+							<button class="dropdown-option">Mira Kowalski</button>
+							<button class="dropdown-option">Aaron Reyes</button>
+							<button class="dropdown-option">June Nakamura</button>
+							<button class="dropdown-option">Unassigned</button>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section-label">03 · Real &lt;dialog&gt;</div>
+				<h2 class="section-title">Modal handoff</h2>
+				<p class="section-note">
+					This one lands in a real <b>&lt;dialog&gt;</b>. The flight happens in normal flow while
+					the dialog is still closed; at the reveal point — while it's still invisible — it's
+					promoted with <b>showModal()</b> — top layer, inert page, focus trap, real Escape
+					semantics. Closing demotes and reverses on the same frame. <b>Escape mid-flight</b>
+					turns it around wherever it is.
+				</p>
+
+				<button
+					class="task-card release-card"
+					data-title="Ship morph-engine v1.1.0">
+					<span class="tag tag-build">Release</span>
+					<span class="task-title">Ship morph-engine v1.1.0</span>
+					<span class="task-snippet"
+						>Real-dialog handoff, popover-blob groundwork, docs. Tag it and let it fly.</span
+					>
+					<span class="task-meta">
+						<span class="task-due">Today</span>
+						<span class="avatar">CS</span>
+					</span>
+				</button>
+			</section>
+
+			<section class="section">
+				<div class="section-label">04 · Extreme geometry</div>
+				<h2 class="section-title">Confirmation dialog</h2>
+				<p class="section-note">
+					A ~9rem pill blows all the way up into a modal — <b>border-radius 100px → 1.25rem</b>, the
+					widest geometry jump on the page. The pill's 1px edge has nowhere to land: this panel is
+					<b>borderless</b>. Rather than flash toward the text color as the border thins away, the
+					engine <b>holds the edge's own color</b> and collapses its width to zero, so the line just
+					quietly recedes. Same <b>showModal()</b> handoff at the reveal point — this pill lands modal
+					too.
+				</p>
+
+				<button class="confirm-pill">Delete workspace…</button>
+			</section>
+
+			<section class="section">
+				<div class="section-label">05 · Parameter lab</div>
+				<h2 class="section-title">Tune the feel</h2>
+				<p class="section-note">
+					Attraction and friction apply <b>live, mid-flight</b>. The reveal point takes effect on
+					the next morph.
+				</p>
+
+				<div class="lab">
+					<div class="slider-row">
+						<span class="slider-label">Attraction</span>
+						<input type="range" id="lab-attraction" min="5" max="250" value="100" step="1" />
+						<span class="slider-value" id="lab-attraction-value">0.100</span>
+					</div>
+					<div class="slider-row">
+						<span class="slider-label">Friction</span>
+						<input type="range" id="lab-friction" min="5" max="60" value="32" step="1" />
+						<span class="slider-value" id="lab-friction-value">0.32</span>
+					</div>
+					<div class="slider-row">
+						<span class="slider-label">Reveal at</span>
+						<input type="range" id="lab-reveal" min="50" max="95" value="75" step="1" />
+						<span class="slider-value" id="lab-reveal-value">0.75</span>
+					</div>
+					<div class="readout">
+						<div class="readout-item">
+							<span class="readout-key">State</span>
+							<span class="readout-val" id="readout-state">idle</span>
+						</div>
+						<div class="readout-item">
+							<span class="readout-key">Progress</span>
+							<span class="readout-val" id="readout-progress">0.000</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section-label">06 · Setup</div>
+				<h2 class="section-title">Wire it up</h2>
+				<p class="section-note">
+					Three steps: install, give the target its resting rules, point the engine at a pair of
+					elements. Full API in the <b>README</b>.
+				</p>
+
+				<div class="code-card">
+					<div class="code-head">
+						<span class="code-step">1 · Install</span>
+						<span class="code-lang">shell</span>
+					</div>
+					<pre><span class="tk-com"># physics-engine + frame-engine come along as deps</span>
+npm install <span class="tk-str">@magic-spells/morph-engine</span></pre>
+				</div>
+
+				<div class="code-card">
+					<div class="code-head">
+						<span class="code-step">2 · The target</span>
+						<span class="code-lang">html + css</span>
+					</div>
+					<pre><span class="tk-com">&lt;!-- anything clickable can be a source --&gt;</span>
+&lt;<span class="tk-kw">button</span> <span class="tk-fn">class</span>=<span class="tk-str">"task-card"</span>&gt;…&lt;/<span class="tk-kw">button</span>&gt;
+
+<span class="tk-com">&lt;!-- the target rests hidden — with visibility, never opacity --&gt;</span>
+&lt;<span class="tk-kw">aside</span> <span class="tk-fn">class</span>=<span class="tk-str">"task-panel"</span>&gt;…&lt;/<span class="tk-kw">aside</span>&gt;
+
+<span class="tk-fn">.task-panel</span> {
+  <span class="tk-kw">position</span>: fixed;
+  <span class="tk-kw">inset</span>: <span class="tk-num">0</span>;
+  <span class="tk-kw">margin</span>: auto; <span class="tk-com">/* center without transform — the engine owns transform */</span>
+  <span class="tk-kw">width</span>: <span class="tk-fn">min</span>(<span class="tk-num">560px</span>, <span class="tk-fn">calc</span>(<span class="tk-num">100vw</span> - <span class="tk-num">3rem</span>));
+  <span class="tk-kw">height</span>: <span class="tk-fn">min</span>(<span class="tk-num">540px</span>, <span class="tk-fn">calc</span>(<span class="tk-num">100vh</span> - <span class="tk-num">6rem</span>));
+  <span class="tk-kw">visibility</span>: hidden; <span class="tk-com">/* resting state — no opacity, no transition */</span>
+}</pre>
+				</div>
+
+				<div class="code-card">
+					<div class="code-head">
+						<span class="code-step">3 · The engine</span>
+						<span class="code-lang">javascript</span>
+					</div>
+					<pre><span class="tk-kw">import</span> { MorphEngine } <span class="tk-kw">from</span> <span class="tk-str">'@magic-spells/morph-engine'</span>;
+
+<span class="tk-kw">const</span> morph = <span class="tk-kw">new</span> <span class="tk-fn">MorphEngine</span>({
+  attraction: <span class="tk-num">0.1</span>,  <span class="tk-com">// higher = faster</span>
+  friction: <span class="tk-num">0.32</span>,  <span class="tk-com">// lower = bouncier</span>
+});
+
+<span class="tk-com">// the panel grows out of whichever card was clicked</span>
+card.<span class="tk-fn">addEventListener</span>(<span class="tk-str">'click'</span>, () =&gt; {
+  morph.<span class="tk-fn">show</span>({ from: card, to: panel });
+});
+
+<span class="tk-com">// mid-flight? hide() just reverses the spring</span>
+closeButton.<span class="tk-fn">addEventListener</span>(<span class="tk-str">'click'</span>, () =&gt; morph.<span class="tk-fn">hide</span>());
+
+<span class="tk-com">// events for app-level choreography — backdrop, focus, …</span>
+morph.<span class="tk-fn">on</span>(<span class="tk-str">'show'</span>, () =&gt; backdrop.<span class="tk-fn">setAttribute</span>(<span class="tk-str">'visible'</span>, <span class="tk-str">''</span>));
+morph.<span class="tk-fn">on</span>(<span class="tk-str">'hide'</span>, () =&gt; backdrop.<span class="tk-fn">removeAttribute</span>(<span class="tk-str">'visible'</span>));
+morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt; panel.<span class="tk-fn">focus</span>());</pre>
+				</div>
+			</section>
+		</main>
+
+		<footer class="footer">
+			powered by <a href="https://github.com/magic-spells">@magic-spells</a> physics-engine ·
+			frame-engine
+		</footer>
+
+		<!-- Morph surfaces -->
+		<div class="backdrop"></div>
+
+		<aside class="task-panel" aria-modal="true" role="dialog">
+			<div class="panel-top">
+				<span class="tag tag-design" data-content-tag>Design</span>
+				<button class="panel-close" aria-label="Close panel">✕</button>
+			</div>
+			<h2 class="panel-title" data-content-title>Task title</h2>
+			<div class="panel-description" data-content-description>Task description</div>
+			<div class="panel-meta">
+				<div class="meta-item">
+					<span class="meta-key">Status</span>
+					<span class="meta-val" data-content-status>—</span>
+				</div>
+				<div class="meta-item">
+					<span class="meta-key">Due</span>
+					<span class="meta-val" data-content-due>—</span>
+				</div>
+				<div class="meta-item">
+					<span class="meta-key">Priority</span>
+					<span class="meta-val" data-content-priority>—</span>
+				</div>
+			</div>
+			<div class="panel-actions">
+				<button class="btn btn-primary">Mark complete</button>
+				<button class="btn btn-ghost">Edit task</button>
+			</div>
+		</aside>
+
+		<dialog class="morph-dialog">
+			<div class="panel-top">
+				<span class="tag tag-build">Release</span>
+				<button class="panel-close" aria-label="Close dialog">✕</button>
+			</div>
+			<h2 class="panel-title">Ship morph-engine v1.1.0</h2>
+			<div class="panel-description">
+				<p>
+					This surface is a real dialog element. While the spring was flying it stayed closed —
+					the engine measured it invisibly and drove it in normal flow, exactly like any other
+					morph target.
+				</p>
+				<p>
+					It was promoted with showModal() at the reveal point, while still at opacity 0 — so
+					the top-layer handoff repainted an invisible surface and it faded in already modal:
+					top layer, inert page, focus trapped in here, and Escape runs the reverse morph
+					instead of snapping closed (the cancel event is intercepted). Closing demotes it from
+					the top layer on the exact frame the blob takes over, so there is no seam in either
+					direction.
+				</p>
+				<p>
+					Tab around — you can't leave. Click outside — the ::backdrop routes it back as a
+					close. This is the choreography a dialog-panel element would package up.
+				</p>
+			</div>
+			<div class="panel-meta">
+				<div class="meta-item">
+					<span class="meta-key">Surface</span>
+					<span class="meta-val">&lt;dialog&gt; · top layer</span>
+				</div>
+				<div class="meta-item">
+					<span class="meta-key">Focus</span>
+					<span class="meta-val">Trapped</span>
+				</div>
+				<div class="meta-item">
+					<span class="meta-key">Escape</span>
+					<span class="meta-val">Reverse morph</span>
+				</div>
+			</div>
+			<div class="panel-actions">
+				<button class="btn btn-primary">Ship it</button>
+				<button class="btn btn-ghost">Not yet</button>
+			</div>
+		</dialog>
+
+		<dialog class="morph-confirm">
+			<h2 class="confirm-title">Delete this workspace?</h2>
+			<p class="confirm-body">
+				This removes every board, card, and comment in the workspace. There's no undo — the only
+				thing that reverses here is the morph.
+			</p>
+			<div class="panel-actions">
+				<button class="btn btn-danger">Delete workspace</button>
+				<button class="btn btn-ghost">Keep it</button>
+			</div>
+		</dialog>
+
+		<script src="./dist/morph-engine.js?v=4"></script>
+		<script>
+			const { MorphEngine } = window.MorphEngine;
+
+			// ---- Task board morph ----
+			const taskMorph = new MorphEngine({ zIndex: 990 });
+			const panel = document.querySelector('.task-panel');
+			const backdrop = document.querySelector('.backdrop');
+
+			let taskRun = Promise.resolve(true);
+
+			function populatePanel(card) {
+				const data = card.dataset;
+				const tagElement = panel.querySelector('[data-content-tag]');
+				tagElement.textContent = data.tag;
+				tagElement.className = `tag tag-${data.tag}`;
+				panel.querySelector('[data-content-title]').textContent = data.title;
+				panel.querySelector('[data-content-description]').textContent = data.description;
+				panel.querySelector('[data-content-status]').textContent = data.status;
+				panel.querySelector('[data-content-due]').textContent = data.due;
+				panel.querySelector('[data-content-priority]').textContent = data.priority;
+			}
+
+			async function openTask(card) {
+				if (taskMorph.state === 'hiding') await taskRun; // let the flight land first
+				if (taskMorph.state !== 'idle') return;
+				populatePanel(card);
+				taskRun = taskMorph.show({ from: card, to: panel });
+			}
+
+			function closeTask() {
+				if (taskMorph.state === 'showing' || taskMorph.state === 'shown') {
+					taskRun = taskMorph.hide();
+				}
+			}
+
+			// scoped to the grid — the release card reuses .task-card styling but
+			// belongs to the dialog engine (two engines must never share an element)
+			document.querySelectorAll('.task-grid .task-card').forEach((card) => {
+				card.addEventListener('click', () => openTask(card));
+			});
+			backdrop.addEventListener('click', closeTask);
+			panel.querySelector('.panel-close').addEventListener('click', closeTask);
+
+			taskMorph.on('show', () => backdrop.setAttribute('visible', ''));
+			taskMorph.on('hide', () => backdrop.removeAttribute('visible'));
+			taskMorph.on('stop', () => backdrop.removeAttribute('visible'));
+
+			// ---- Dropdown morph ----
+			const dropdownMorph = new MorphEngine({ revealAt: 0.7, zIndex: 990 });
+			const dropdownWrap = document.querySelector('.dropdown-wrap');
+			const trigger = dropdownWrap.querySelector('.dropdown-trigger');
+			const options = dropdownWrap.querySelector('.dropdown-options');
+			const triggerValue = trigger.querySelector('[data-content-value]');
+
+			trigger.addEventListener('click', () => {
+				if (dropdownMorph.state === 'idle' || dropdownMorph.state === 'hiding') {
+					dropdownMorph.show({ from: trigger, to: options });
+				} else {
+					dropdownMorph.hide();
+				}
+			});
+
+			options.querySelectorAll('.dropdown-option').forEach((option) => {
+				option.addEventListener('click', () => {
+					triggerValue.textContent = option.textContent;
+					dropdownMorph.hide();
+				});
+			});
+
+			document.addEventListener('click', (event) => {
+				if (dropdownMorph.state === 'idle') return;
+				if (event.target.closest('.dropdown-wrap')) return;
+				dropdownMorph.hide();
+			});
+
+			document.addEventListener('keydown', (event) => {
+				if (event.key !== 'Escape') return;
+				closeTask();
+				closeReleaseDialog(); // covers the flight phase; the open modal handles its own cancel
+				closeConfirmDialog(); // same — flight phase only; the open modal handles its own cancel
+				if (dropdownMorph.state === 'showing' || dropdownMorph.state === 'shown') {
+					dropdownMorph.hide();
+				}
+			});
+
+			// ---- Real <dialog> morph (promote to top layer at settle) ----
+			// Everything in this block is what a <dialog-panel> custom element would
+			// package up: scrim choreography, showModal() at reveal, demote-then-reverse
+			// on close, cancel interception, outside-click routing.
+			const dialogMorph = new MorphEngine({ zIndex: 990 });
+			const releaseCard = document.querySelector('.release-card');
+			const releaseDialog = document.querySelector('.morph-dialog');
+
+			function openReleaseDialog() {
+				if (dialogMorph.state === 'idle' || dialogMorph.state === 'hiding') {
+					// show() during 'hiding' reverses the in-flight morph
+					dialogMorph.show({ from: releaseCard, to: releaseDialog, display: 'flex' });
+				}
+			}
+
+			function closeReleaseDialog() {
+				if (dialogMorph.state !== 'showing' && dialogMorph.state !== 'shown') return;
+				// demote first, reverse second — same task, so no paint between the two:
+				// the dialog drops back into normal flow at the identical rect and the
+				// blob covers it on that same frame
+				if (releaseDialog.open) releaseDialog.close();
+				dialogMorph.hide();
+			}
+
+			// promote at the reveal point, not at settle: the dialog is still at
+			// opacity 0 when the reveal window opens, so the top-layer repaint
+			// happens on an invisible surface and it fades in already modal.
+			// (Promoting on the settle frame shifted the visible panel.)
+			dialogMorph.on('reveal', ({ to }) => {
+				if (to === releaseDialog && !releaseDialog.open) releaseDialog.showModal();
+			});
+
+			// a reversal that swings back below the reveal point un-reveals the
+			// dialog — demote it the same way. The close listener's state guard
+			// keeps this from re-entering the morph.
+			dialogMorph.on('unreveal', ({ to }) => {
+				if (to === releaseDialog && releaseDialog.open) releaseDialog.close();
+			});
+
+			releaseCard.addEventListener('click', openReleaseDialog);
+			releaseDialog.querySelector('.panel-close').addEventListener('click', closeReleaseDialog);
+			releaseDialog.querySelectorAll('.panel-actions .btn').forEach((button) => {
+				button.addEventListener('click', closeReleaseDialog);
+			});
+
+			// Escape on the open modal — morph home instead of snapping closed
+			releaseDialog.addEventListener('cancel', (event) => {
+				event.preventDefault();
+				closeReleaseDialog();
+			});
+
+			// safety net: if the dialog closes through any path we didn't drive
+			// (e.g. the browser force-closes despite preventDefault), morph home.
+			// The !open check guards against late delivery — the close event is
+			// queued, and must not hide a dialog that has since been reopened.
+			releaseDialog.addEventListener('close', () => {
+				if (dialogMorph.state === 'shown' && !releaseDialog.open) dialogMorph.hide();
+			});
+
+			// while modal, outside clicks land on the dialog itself (via ::backdrop)
+			releaseDialog.addEventListener('click', (event) => {
+				if (event.target !== releaseDialog) return;
+				const rect = releaseDialog.getBoundingClientRect();
+				const outside =
+					event.clientX < rect.left ||
+					event.clientX > rect.right ||
+					event.clientY < rect.top ||
+					event.clientY > rect.bottom;
+				if (outside) closeReleaseDialog();
+			});
+
+			// during the flight the dialog isn't modal yet — the page scrim takes the click
+			backdrop.addEventListener('click', closeReleaseDialog);
+
+			dialogMorph.on('show', () => backdrop.setAttribute('visible', ''));
+			dialogMorph.on('hide', () => backdrop.removeAttribute('visible'));
+			dialogMorph.on('stop', () => backdrop.removeAttribute('visible'));
+
+			// ---- Confirm <dialog> morph (borderless, extreme geometry jump) ----
+			// Same top-layer choreography as the release dialog — a second proof that
+			// the showModal()-at-reveal handoff isn't specific to one panel. The pill's
+			// 1px border collapses into a borderless surface without a color flash.
+			const confirmMorph = new MorphEngine({ zIndex: 990 });
+			const confirmPill = document.querySelector('.confirm-pill');
+			const confirmDialog = document.querySelector('.morph-confirm');
+
+			function openConfirmDialog() {
+				if (confirmMorph.state === 'idle' || confirmMorph.state === 'hiding') {
+					// show() during 'hiding' reverses the in-flight morph
+					confirmMorph.show({ from: confirmPill, to: confirmDialog, display: 'flex' });
+				}
+			}
+
+			function closeConfirmDialog() {
+				if (confirmMorph.state !== 'showing' && confirmMorph.state !== 'shown') return;
+				// demote first, reverse second — no paint between the two (see release dialog)
+				if (confirmDialog.open) confirmDialog.close();
+				confirmMorph.hide();
+			}
+
+			// promote while still at opacity 0 — the top-layer repaint lands on an
+			// invisible surface and it fades in already modal.
+			confirmMorph.on('reveal', ({ to }) => {
+				if (to === confirmDialog && !confirmDialog.open) confirmDialog.showModal();
+			});
+
+			// a reversal back below the reveal point un-reveals it — demote the same way;
+			// the close listener's state guard keeps this from re-entering the morph.
+			confirmMorph.on('unreveal', ({ to }) => {
+				if (to === confirmDialog && confirmDialog.open) confirmDialog.close();
+			});
+
+			confirmPill.addEventListener('click', openConfirmDialog);
+			// both actions just close via the reverse morph
+			confirmDialog.querySelectorAll('.panel-actions .btn').forEach((button) => {
+				button.addEventListener('click', closeConfirmDialog);
+			});
+
+			// Escape on the open modal — morph home instead of snapping closed
+			confirmDialog.addEventListener('cancel', (event) => {
+				event.preventDefault();
+				closeConfirmDialog();
+			});
+
+			// safety net for any close path we didn't drive (see release dialog)
+			confirmDialog.addEventListener('close', () => {
+				if (confirmMorph.state === 'shown' && !confirmDialog.open) confirmMorph.hide();
+			});
+
+			// while modal, outside clicks land on the dialog itself (via ::backdrop)
+			confirmDialog.addEventListener('click', (event) => {
+				if (event.target !== confirmDialog) return;
+				const rect = confirmDialog.getBoundingClientRect();
+				const outside =
+					event.clientX < rect.left ||
+					event.clientX > rect.right ||
+					event.clientY < rect.top ||
+					event.clientY > rect.bottom;
+				if (outside) closeConfirmDialog();
+			});
+
+			// during the flight the dialog isn't modal yet — the page scrim takes the click
+			backdrop.addEventListener('click', closeConfirmDialog);
+
+			confirmMorph.on('show', () => backdrop.setAttribute('visible', ''));
+			confirmMorph.on('hide', () => backdrop.removeAttribute('visible'));
+			confirmMorph.on('stop', () => backdrop.removeAttribute('visible'));
+
+			// ---- Parameter lab ----
+			const engines = [taskMorph, dropdownMorph, dialogMorph, confirmMorph];
+			const attractionSlider = document.getElementById('lab-attraction');
+			const frictionSlider = document.getElementById('lab-friction');
+			const revealSlider = document.getElementById('lab-reveal');
+
+			attractionSlider.addEventListener('input', () => {
+				const value = attractionSlider.value / 1000;
+				engines.forEach((engine) => engine.setAttraction(value));
+				document.getElementById('lab-attraction-value').textContent = value.toFixed(3);
+			});
+
+			frictionSlider.addEventListener('input', () => {
+				const value = frictionSlider.value / 100;
+				engines.forEach((engine) => engine.setFriction(value));
+				document.getElementById('lab-friction-value').textContent = value.toFixed(2);
+			});
+
+			revealSlider.addEventListener('input', () => {
+				const value = revealSlider.value / 100;
+				engines.forEach((engine) => (engine.revealAt = value));
+				document.getElementById('lab-reveal-value').textContent = value.toFixed(2);
+			});
+
+			// ---- Readout ----
+			const stateReadout = document.getElementById('readout-state');
+			const progressReadout = document.getElementById('readout-progress');
+
+			function wireReadout(engine, label) {
+				engine.on('change', ({ progress, phase }) => {
+					stateReadout.textContent = `${label} · ${phase}`;
+					progressReadout.textContent = progress.toFixed(3);
+				});
+				['shown', 'hidden', 'stop'].forEach((eventName) => {
+					engine.on(eventName, () => {
+						stateReadout.textContent = `${label} · ${engine.state}`;
+					});
+				});
+			}
+			wireReadout(taskMorph, 'tasks');
+			wireReadout(dropdownMorph, 'dropdown');
+			wireReadout(dialogMorph, 'dialog');
+			wireReadout(confirmMorph, 'confirm');
+		</script>
+	</body>
+</html>

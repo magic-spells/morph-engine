@@ -1,8 +1,12 @@
 # @magic-spells/morph-engine
 
+**~8 KB** gzipped
+
 Shared-element morph engine. A spring-driven `<morph-blob>` measures the element you clicked, morphs its rect, corner radii, background, border and shadow into a target element's, and reveals the target in lockstep with the blob's geometry — so the real element inherits the spring's settle. UI grows out of what you clicked, macOS-genie style.
 
 Built on [@magic-spells/physics-engine](https://www.npmjs.com/package/@magic-spells/physics-engine) (spring timing) and [@magic-spells/frame-engine](https://www.npmjs.com/package/@magic-spells/frame-engine) (keyframe interpolation with extrapolation — spring overshoot becomes geometry bounce for free).
+
+🔍 **[Live Demo](https://magic-spells.github.io/morph-engine/demo/)** - See it in action!
 
 ## Install
 
@@ -99,4 +103,14 @@ new MorphEngine({
 npm run dev   # http://localhost:3011
 ```
 
-Task cards that grow into a detail panel, a dropdown that grows out of its trigger, and live spring-tuning sliders.
+Task cards that grow into a detail panel, a dropdown that grows out of its trigger, two real `<dialog>` handoffs (a card and a pill that land modal via the `reveal`-point `showModal()` pattern), and live spring-tuning sliders.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  Made by <a href="https://github.com/coryschulz">Cory Schulz</a>
+</p>

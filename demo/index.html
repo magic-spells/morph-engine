@@ -72,6 +72,8 @@
 				align-items: center;
 				padding: 4.5rem 2rem 1.5rem;
 				text-align: center;
+				/* the 900px glow otherwise spills past the viewport on mobile */
+				overflow: hidden;
 			}
 
 			.hero::before {
@@ -697,6 +699,28 @@
 				background: var(--violet);
 				border: none;
 				box-shadow: 0 0 20px rgba(167, 139, 250, 0.35);
+			}
+
+			/* on narrow screens each slider gets its own line — label and live value
+			   pair up above it, slider stretches full width below */
+			@media (max-width: 600px) {
+				.slider-row {
+					flex-wrap: wrap;
+					gap: 0.55rem 1rem;
+				}
+
+				.slider-label {
+					min-width: 0;
+				}
+
+				.slider-value {
+					margin-left: auto;
+				}
+
+				.slider-row input[type='range'] {
+					flex-basis: 100%;
+					order: 1;
+				}
 			}
 
 			.readout {

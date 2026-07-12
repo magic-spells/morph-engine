@@ -92,10 +92,16 @@
 				letter-spacing: 0.25em;
 				text-transform: uppercase;
 				color: var(--violet);
+				text-decoration: none;
 				border: 1px solid var(--border-accent);
 				padding: 0.4em 1.4em;
 				border-radius: 100px;
 				margin-bottom: 2.2rem;
+				transition: border-color 0.25s ease;
+			}
+
+			.hero-badge:hover {
+				border-color: var(--violet-dim);
 			}
 
 			.hero h1 {
@@ -798,7 +804,7 @@
 
 	<body>
 		<header class="hero">
-			<div class="hero-badge">@magic-spells / morph-engine</div>
+			<a class="hero-badge" href="https://github.com/magic-spells/morph-engine">@magic-spells / morph-engine</a>
 			<h1>Interfaces that <em>become</em><br />each other</h1>
 			<p>
 				A spring-driven blob measures what you clicked, morphs its rect, radius, color, border and

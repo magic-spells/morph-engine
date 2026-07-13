@@ -58,7 +58,7 @@
 			return t ? this.#t.delete(t) : this.#t.clear(), this;
 		}
 	};
-	var b$1 = class extends f {
+	var b = class extends f {
 		#t;
 		#m;
 		#o;
@@ -168,57 +168,13 @@
 	};
 	//#endregion
 	//#region node_modules/@magic-spells/frame-engine/dist/frame-engine.esm.js
-	var R = /* @__PURE__ */ new Set([
-		"display",
-		"position",
-		"float",
-		"clear",
-		"visibility",
-		"overflow",
-		"overflow-x",
-		"overflow-y",
-		"flex-direction",
-		"flex-wrap",
-		"justify-content",
-		"align-items",
-		"align-content",
-		"order",
-		"grid-template-columns",
-		"grid-template-rows",
-		"grid-template-areas",
-		"grid-auto-flow",
-		"z-index",
-		"table-layout",
-		"empty-cells",
-		"caption-side",
-		"list-style-type",
-		"list-style-position",
-		"pointer-events",
-		"user-select",
-		"box-sizing",
-		"resize",
-		"text-align",
-		"text-transform",
-		"white-space",
-		"word-break",
-		"word-wrap",
-		"font-style",
-		"font-variant",
-		"background-repeat",
-		"background-attachment",
-		"border-style",
-		"border-collapse",
-		"content",
-		"page-break-before",
-		"page-break-after",
-		"page-break-inside"
-	]);
-	var g = /* @__PURE__ */ new Set([
+	var e = /* @__PURE__ */ new Set(/* @__PURE__ */ "display.position.float.clear.visibility.overflow.overflow-x.overflow-y.flex-direction.flex-wrap.justify-content.align-items.align-content.order.grid-template-columns.grid-template-rows.grid-template-areas.grid-auto-flow.z-index.table-layout.empty-cells.caption-side.list-style-type.list-style-position.pointer-events.user-select.box-sizing.resize.text-align.text-transform.white-space.word-break.word-wrap.font-style.font-variant.background-repeat.background-attachment.border-style.border-collapse.content.page-break-before.page-break-after.page-break-inside".split("."));
+	var t = /* @__PURE__ */ new Set([
 		"transform",
 		"filter",
 		"backdrop-filter"
 	]);
-	var b = {
+	var n = {
 		translateX: [{
 			value: 0,
 			unit: "px"
@@ -400,7 +356,7 @@
 			}
 		]
 	};
-	var I = {
+	var r = {
 		opacity: [0, 1],
 		blur: [0, Infinity],
 		brightness: [0, Infinity],
@@ -410,17 +366,17 @@
 		sepia: [0, 1],
 		saturate: [0, Infinity]
 	};
-	var y = {
+	var i = {
 		red: 0,
 		green: 0,
 		blue: 0,
 		alpha: 0
 	};
-	var A = !1;
-	function $(p, e, a) {
-		return a < 0 && (a += 1), a > 1 && (a -= 1), a < 1 / 6 ? p + (e - p) * 6 * a : a < 1 / 2 ? e : a < 2 / 3 ? p + (e - p) * (2 / 3 - a) * 6 : p;
+	var a = !1;
+	function o(e, t, n) {
+		return n < 0 && (n += 1), n > 1 && --n, n < 1 / 6 ? e + (t - e) * 6 * n : n < 1 / 2 ? t : n < 2 / 3 ? e + (t - e) * (2 / 3 - n) * 6 : e;
 	}
-	var M = {
+	var s = {
 		aliceblue: [
 			240,
 			248,
@@ -1316,246 +1272,200 @@
 			0
 		]
 	};
-	var C = class {
-		/**
-		* @param {Keyframes} keyframes - Object mapping percent positions to CSS styles
-		*/
+	var c = class {
 		constructor(e) {
 			this.setKeyframes(e);
 		}
-		/**
-		* Replace the current keyframes and re-parse all values.
-		* @param {Keyframes} keyframes - Object mapping percent positions (0-100) to CSS styles
-		*/
 		setKeyframes(e) {
-			this.keyframes = Object.keys(e).map(Number).sort((n, r) => n - r).map((n) => ({
-				percent: n,
-				values: this.flatten(e[n])
+			this.keyframes = Object.keys(e).map(Number).sort((e, t) => e - t).map((t) => ({
+				percent: t,
+				values: this.flatten(e[t])
 			}));
-			const a = {};
-			for (const n of g) a[n] = /* @__PURE__ */ new Set();
-			for (const n of this.keyframes) for (const r in n.values) {
-				const t = r.indexOf(":");
-				if (t === -1) continue;
-				const s = r.substring(0, t), i = r.substring(t + 1);
-				i !== "__order" && g.has(s) && a[s].add(i);
+			let r = {};
+			for (let e of t) r[e] = /* @__PURE__ */ new Set();
+			for (let e of this.keyframes) for (let n in e.values) {
+				let e = n.indexOf(":");
+				if (e === -1) continue;
+				let i = n.substring(0, e), a = n.substring(e + 1);
+				a !== "__order" && t.has(i) && r[i].add(a);
 			}
-			for (const n of g) {
-				if (a[n].size === 0) continue;
-				const r = `${n}:__order`;
-				for (const t of this.keyframes) {
-					if (!(r in t.values)) {
-						t.values[r] = {
+			for (let e of t) {
+				if (r[e].size === 0) continue;
+				let t = `${e}:__order`;
+				for (let a of this.keyframes) {
+					if (!(t in a.values)) {
+						a.values[t] = {
 							discrete: !0,
-							value: [...a[n]]
+							value: [...r[e]]
 						};
-						for (const i of a[n]) {
-							const l = `${n}:${i}`, u = b[i] || [{
+						for (let t of r[e]) {
+							let r = `${e}:${t}`, o = n[t] || [{
 								value: 0,
 								unit: ""
 							}];
-							t.values[l] = { args: u.map((c) => ({ ...c })) }, i.startsWith("drop-shadow-") && (t.values[l].color = { ...y });
+							a.values[r] = { args: o.map((e) => ({ ...e })) }, t.startsWith("drop-shadow-") && (a.values[r].color = { ...i });
 						}
 						continue;
 					}
-					for (const i of a[n]) {
-						const l = `${n}:${i}`;
-						if (!(l in t.values)) {
-							const u = b[i] || [{
+					for (let o of r[e]) {
+						let r = `${e}:${o}`;
+						if (!(r in a.values)) {
+							let e = n[o] || [{
 								value: 0,
 								unit: ""
 							}];
-							t.values[l] = { args: u.map((c) => ({ ...c })) }, i.startsWith("drop-shadow-") && (t.values[l].color = { ...y }), t.values[r].value.includes(i) || t.values[r].value.push(i);
+							a.values[r] = { args: e.map((e) => ({ ...e })) }, o.startsWith("drop-shadow-") && (a.values[r].color = { ...i }), a.values[t].value.includes(o) || a.values[t].value.push(o);
 						}
 					}
 				}
 			}
 			this._allKeys = /* @__PURE__ */ new Set();
-			for (const n of this.keyframes) for (const r in n.values) r.endsWith(":__order") || this._allKeys.add(r);
+			for (let e of this.keyframes) for (let t in e.values) t.endsWith(":__order") || this._allKeys.add(t);
 			this._keyFrames = {};
-			for (const n of this._allKeys) this._keyFrames[n] = this.keyframes.filter((r) => n in r.values);
+			for (let e of this._allKeys) this._keyFrames[e] = this.keyframes.filter((t) => e in t.values);
 			this._orders = {};
-			for (const n of g) {
-				const r = `${n}:__order`, t = this.keyframes.filter((l) => r in l.values);
-				if (t.length === 0) continue;
-				const s = /* @__PURE__ */ new Set(), i = [];
-				for (const l of t) for (const u of l.values[r].value) s.has(u) || (s.add(u), i.push(u));
-				this._orders[n] = i;
+			for (let e of t) {
+				let t = `${e}:__order`, n = this.keyframes.filter((e) => t in e.values);
+				if (n.length === 0) continue;
+				let r = /* @__PURE__ */ new Set(), i = [];
+				for (let e of n) for (let n of e.values[t].value) r.has(n) || (r.add(n), i.push(n));
+				this._orders[e] = i;
 			}
 		}
-		/**
-		* Parse a keyframe's style object into an internal representation.
-		* Function-list properties (transform, filter) are expanded into individual
-		* keyed entries. Colors are parsed to RGBA. Discrete properties are wrapped.
-		* @param {Object<string, string|number>} styles - Raw CSS property/value pairs
-		* @returns {Object<string, NumericValue|ColorValue|DiscreteValue|MultiArgValue>}
-		*/
-		flatten(e) {
-			const a = {};
-			for (const n in e) if (g.has(n)) Object.assign(a, this.flattenFunctions(n, e[n]));
-			else if (this.isColor(e[n])) a[n] = this.parseColor(e[n]) || {
+		flatten(n) {
+			let r = {};
+			for (let i in n) t.has(i) ? Object.assign(r, this.flattenFunctions(i, n[i])) : this.isColor(n[i]) ? r[i] = this.parseColor(n[i]) || {
 				discrete: !0,
-				value: e[n]
-			};
-			else if (R.has(n)) a[n] = {
+				value: n[i]
+			} : e.has(i) ? r[i] = {
 				discrete: !0,
-				value: e[n]
-			};
-			else a[n] = this.parseValue(e[n]) || {
+				value: n[i]
+			} : r[i] = this.parseValue(n[i]) || {
 				discrete: !0,
-				value: e[n]
+				value: n[i]
 			};
-			return a;
+			return r;
 		}
-		/**
-		* Expand a function-list property (e.g. "transform") into individual keyed entries.
-		* "transform:translateX", "transform:scale", etc., plus a "__order" key.
-		* @param {string} parent - The parent property name (e.g. "transform")
-		* @param {string} str - The raw CSS function string (e.g. "translateX(10px) scale(2)")
-		* @returns {Object<string, MultiArgValue|DiscreteValue>}
-		*/
-		flattenFunctions(e, a) {
-			const n = {}, r = [], t = {};
-			for (const { name: s, args: i, color: l } of this.parseFunctions(a)) {
-				let u = s;
-				if (s === "drop-shadow") {
-					if (t[s] = (t[s] || 0) + 1, t[s] > 2) {
-						A || (A = !0, console.warn("FrameEngine: Only the first 2 drop-shadow functions per keyframe are interpolated. Additional drop-shadows are ignored."));
+		flattenFunctions(e, t) {
+			let n = {}, r = [], i = {};
+			for (let { name: o, args: s, color: c } of this.parseFunctions(t)) {
+				let t = o;
+				if (o === "drop-shadow") {
+					if (i[o] = (i[o] || 0) + 1, i[o] > 2) {
+						a || (a = !0, console.warn("FrameEngine: Only the first 2 drop-shadow functions per keyframe are interpolated. Additional drop-shadows are ignored."));
 						continue;
 					}
-					u = `${s}-${t[s]}`;
+					t = `${o}-${i[o]}`;
 				}
-				const c = { args: i };
-				l && (c.color = l), n[`${e}:${u}`] = c, r.push(u);
+				let l = { args: s };
+				c && (l.color = c), n[`${e}:${t}`] = l, r.push(t);
 			}
 			return n[`${e}:__order`] = {
 				discrete: !0,
 				value: r
 			}, n;
 		}
-		/**
-		* Parse a CSS function string into an array of function name/arg pairs.
-		* Uses a character-walking parser to handle nested parentheses.
-		* @param {string} str - e.g. "translateX(10px) rotate(45deg)"
-		* @returns {{ name: string, args: NumericValue[] }[]}
-		*/
 		parseFunctions(e) {
-			const a = [];
-			let n = 0;
-			const r = e.length;
+			let t = [], n = 0, r = e.length;
 			for (; n < r;) {
 				for (; n < r && /\s/.test(e[n]);) n++;
 				if (n >= r) break;
-				let t = "";
-				for (; n < r && /[\w-]/.test(e[n]);) t += e[n], n++;
-				if (!t || n >= r || e[n] !== "(") continue;
+				let i = "";
+				for (; n < r && /[\w-]/.test(e[n]);) i += e[n], n++;
+				if (!i || n >= r || e[n] !== "(") continue;
 				n++;
-				let s = 1, i = "";
-				for (; n < r && s > 0;) {
-					if (e[n] === "(") s++;
-					else if (e[n] === ")" && (s--, s === 0)) {
+				let a = 1, o = "";
+				for (; n < r && a > 0;) {
+					if (e[n] === "(") a++;
+					else if (e[n] === ")" && (a--, a === 0)) {
 						n++;
 						break;
 					}
-					i += e[n], n++;
+					o += e[n], n++;
 				}
-				if (t === "drop-shadow") {
-					const l = this.splitArgs(i), u = [];
-					let c = null;
-					for (const o of l) if (this.isColor(o)) {
-						const d = this.parseColor(o);
-						d && (c = d);
+				if (i === "drop-shadow") {
+					let e = this.splitArgs(o), n = [], r = null;
+					for (let t of e) if (this.isColor(t)) {
+						let e = this.parseColor(t);
+						e && (r = e);
 					} else {
-						const d = o.match(/^(-?\d*\.?\d+)(\D*)$/);
-						u.push(d ? {
-							value: parseFloat(d[1]),
-							unit: d[2]
+						let e = t.match(/^(-?\d*\.?\d+)(\D*)$/);
+						n.push(e ? {
+							value: parseFloat(e[1]),
+							unit: e[2]
 						} : {
 							value: 0,
 							unit: ""
 						});
 					}
-					a.push({
-						name: t,
-						args: u,
-						color: c
+					t.push({
+						name: i,
+						args: n,
+						color: r
 					});
 				} else {
-					const l = i.split(/\s*,\s*|\s+/).map((u) => {
-						const c = u.match(/^(-?\d*\.?\d+)(\D*)$/);
-						return c ? {
-							value: parseFloat(c[1]),
-							unit: c[2]
+					let e = o.split(/\s*,\s*|\s+/).map((e) => {
+						let t = e.match(/^(-?\d*\.?\d+)(\D*)$/);
+						return t ? {
+							value: parseFloat(t[1]),
+							unit: t[2]
 						} : {
 							value: 0,
 							unit: ""
 						};
 					});
-					a.push({
-						name: t,
-						args: l
+					t.push({
+						name: i,
+						args: e
 					});
 				}
 			}
-			return a;
+			return t;
 		}
-		/**
-		* Paren-aware argument splitter for CSS functions.
-		* Splits on spaces/commas at depth 0, preserving nested parens.
-		* @param {string} argStr
-		* @returns {string[]}
-		*/
 		splitArgs(e) {
-			const a = [];
-			let n = "", r = 0;
-			for (let t = 0; t < e.length; t++) {
-				const s = e[t];
-				s === "(" ? r++ : s === ")" && r--, r === 0 && (s === " " || s === ",") ? (n.trim() && a.push(n.trim()), n = "") : n += s;
+			let t = [], n = "", r = 0;
+			for (let i = 0; i < e.length; i++) {
+				let a = e[i];
+				a === "(" ? r++ : a === ")" && r--, r === 0 && (a === " " || a === ",") ? (n.trim() && t.push(n.trim()), n = "") : n += a;
 			}
-			return n.trim() && a.push(n.trim()), a;
+			return n.trim() && t.push(n.trim()), t;
 		}
-		/**
-		* Parse a single CSS value into a numeric value and unit.
-		* @param {string|number} value - e.g. "10px", "45deg", 42
-		* @returns {NumericValue|null} Parsed value or null if not numeric
-		*/
 		parseValue(e) {
 			if (typeof e == "number") return {
 				value: e,
 				unit: ""
 			};
-			const a = String(e).match(/^(-?\d*\.?\d+)(\D*)$/);
-			return a ? {
-				value: parseFloat(a[1]),
-				unit: a[2]
+			let t = String(e).match(/^(-?\d*\.?\d+)(\D*)$/);
+			return t ? {
+				value: parseFloat(t[1]),
+				unit: t[2]
 			} : null;
 		}
-		/**
-		* Parse a CSS color string into a ColorValue object.
-		* @param {string} color - e.g. "#ff0", "#ff0000", "rgb(255,0,0)", "rgba(255,0,0,0.5)", "hsl(120,50%,50%)"
-		* @returns {ColorValue}
-		*/
 		parseColor(e) {
-			const a = this.colorToRGBA(e);
-			if (!a) return null;
-			const [n, r, t, s] = a;
+			let t = this.colorToRGBA(e);
+			if (!t) return null;
+			let [n, r, i, a] = t;
 			return {
 				red: n,
 				green: r,
-				blue: t,
-				alpha: s
+				blue: i,
+				alpha: a
 			};
 		}
-		/**
-		* Convert a CSS color string to an [r, g, b, a] tuple.
-		* Supports #rgb, #rgba, #rrggbb, #rrggbbaa, rgb(), rgba(), hsl(), hsla() formats.
-		* @param {string} color
-		* @returns {[number, number, number, number]}
-		*/
 		colorToRGBA(e) {
 			if (typeof e != "string") return null;
-			const a = M[e.toLowerCase()];
-			if (a) return a;
+			let t = s[e.toLowerCase()];
+			if (t) return t;
+			let n = e.match(/^color\(\s*srgb\s+([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)\s+([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)\s+([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(?:\s*\/\s*([+-]?(?:\d*\.?\d+)(?:e[+-]?\d+)?)(%)?)?\s*\)$/i);
+			if (n) {
+				let e = n[4] === void 0 ? 1 : parseFloat(n[4]) / (n[5] ? 100 : 1);
+				return [
+					parseFloat(n[1]) * 255,
+					parseFloat(n[2]) * 255,
+					parseFloat(n[3]) * 255,
+					e
+				];
+			}
 			if (/^#[0-9A-Fa-f]{3}$/.test(e)) return [
 				parseInt(e[1] + e[1], 16),
 				parseInt(e[2] + e[2], 16),
@@ -1580,123 +1490,92 @@
 				parseInt(e.slice(5, 7), 16),
 				parseInt(e.slice(7, 9), 16) / 255
 			];
-			const n = e.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
-			if (n) return [
-				parseInt(n[1], 10),
-				parseInt(n[2], 10),
-				parseInt(n[3], 10),
-				n[4] !== void 0 ? parseFloat(n[4]) : 1
-			];
-			const r = e.match(/^rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*([\d.]+)\s*)?\)$/);
+			let r = e.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
 			if (r) return [
 				parseInt(r[1], 10),
 				parseInt(r[2], 10),
 				parseInt(r[3], 10),
-				r[4] !== void 0 ? parseFloat(r[4]) : 1
+				r[4] === void 0 ? 1 : parseFloat(r[4])
 			];
-			const t = e.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/);
-			if (t) return this._hslToRgba(parseFloat(t[1]), parseFloat(t[2]), parseFloat(t[3]), t[4] !== void 0 ? parseFloat(t[4]) : 1);
-			const s = e.match(/^hsla?\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*(?:\/\s*([\d.]+)\s*)?\)$/);
-			return s ? this._hslToRgba(parseFloat(s[1]), parseFloat(s[2]), parseFloat(s[3]), s[4] !== void 0 ? parseFloat(s[4]) : 1) : null;
+			let i = e.match(/^rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*([\d.]+)\s*)?\)$/);
+			if (i) return [
+				parseInt(i[1], 10),
+				parseInt(i[2], 10),
+				parseInt(i[3], 10),
+				i[4] === void 0 ? 1 : parseFloat(i[4])
+			];
+			let a = e.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/);
+			if (a) return this._hslToRgba(parseFloat(a[1]), parseFloat(a[2]), parseFloat(a[3]), a[4] === void 0 ? 1 : parseFloat(a[4]));
+			let o = e.match(/^hsla?\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*(?:\/\s*([\d.]+)\s*)?\)$/);
+			return o ? this._hslToRgba(parseFloat(o[1]), parseFloat(o[2]), parseFloat(o[3]), o[4] === void 0 ? 1 : parseFloat(o[4])) : null;
 		}
-		_hslToRgba(e, a, n, r) {
-			const t = e / 360, s = a / 100, i = n / 100;
-			if (s === 0) {
-				const c = Math.round(i * 255);
+		_hslToRgba(e, t, n, r) {
+			let i = e / 360, a = t / 100, s = n / 100;
+			if (a === 0) {
+				let e = Math.round(s * 255);
 				return [
-					c,
-					c,
-					c,
+					e,
+					e,
+					e,
 					r
 				];
 			}
-			const l = i < .5 ? i * (1 + s) : i + s - i * s, u = 2 * i - l;
+			let c = s < .5 ? s * (1 + a) : s + a - s * a, l = 2 * s - c;
 			return [
-				Math.round($(u, l, t + 1 / 3) * 255),
-				Math.round($(u, l, t) * 255),
-				Math.round($(u, l, t - 1 / 3) * 255),
+				Math.round(o(l, c, i + 1 / 3) * 255),
+				Math.round(o(l, c, i) * 255),
+				Math.round(o(l, c, i - 1 / 3) * 255),
 				r
 			];
 		}
-		/**
-		* Test whether a value looks like a CSS color.
-		* @param {*} value
-		* @returns {boolean}
-		*/
 		isColor(e) {
-			return typeof e != "string" ? !1 : /^(#[0-9A-Fa-f]{3}$|#[0-9A-Fa-f]{4}$|#[0-9A-Fa-f]{6}$|#[0-9A-Fa-f]{8}$|rgba?\s*\(|hsla?\s*\()/.test(e) ? !0 : e.toLowerCase() in M;
+			return typeof e == "string" ? /^(#[0-9A-Fa-f]{3}$|#[0-9A-Fa-f]{4}$|#[0-9A-Fa-f]{6}$|#[0-9A-Fa-f]{8}$|rgba?\s*\(|hsla?\s*\()/.test(e) || /^color\(\s*srgb\s/i.test(e) ? !0 : e.toLowerCase() in s : !1;
 		}
-		/**
-		* Linear interpolation between two numbers.
-		* @param {number} start
-		* @param {number} end
-		* @param {number} factor - 0 = start, 1 = end, extrapolates outside [0,1]
-		* @returns {number}
-		*/
-		lerp(e, a, n) {
-			return e + (a - e) * n;
+		lerp(e, t, n) {
+			return e + (t - e) * n;
 		}
-		/**
-		* Interpolate between two colors, clamping each channel.
-		* @param {ColorValue} start
-		* @param {ColorValue} end
-		* @param {number} factor
-		* @returns {ColorValue}
-		*/
-		lerpColor(e, a, n) {
-			const r = (t, s, i) => Math.min(i, Math.max(s, t));
+		lerpColor(e, t, n) {
+			let r = (e, t, n) => Math.min(n, Math.max(t, e));
 			return {
-				red: Math.round(r(this.lerp(e.red, a.red, n), 0, 255)),
-				green: Math.round(r(this.lerp(e.green, a.green, n), 0, 255)),
-				blue: Math.round(r(this.lerp(e.blue, a.blue, n), 0, 255)),
-				alpha: parseFloat(r(this.lerp(e.alpha, a.alpha, n), 0, 1).toFixed(4))
+				red: Math.round(r(this.lerp(e.red, t.red, n), 0, 255)),
+				green: Math.round(r(this.lerp(e.green, t.green, n), 0, 255)),
+				blue: Math.round(r(this.lerp(e.blue, t.blue, n), 0, 255)),
+				alpha: parseFloat(r(this.lerp(e.alpha, t.alpha, n), 0, 1).toFixed(4))
 			};
 		}
-		/**
-		* Format a number to at most 4 decimal places, stripping trailing zeros.
-		* @param {number} num
-		* @returns {string}
-		*/
 		format(e) {
 			return parseFloat(e.toFixed(4)).toString();
 		}
-		/**
-		* Find the two surrounding keyframes and the interpolation factor for a given percent.
-		* Extrapolates when percent is outside the keyframe range.
-		* @param {{ percent: number, values: Object }[]} frames - Keyframes that contain a given property
-		* @param {number} percent - The current position (0-100)
-		* @returns {{ from: Object, to: Object, factor: number }|null}
-		*/
-		findFramesAndFactor(e, a) {
+		findFramesAndFactor(e, t) {
 			if (e.length === 0) return null;
 			if (e.length === 1) return {
 				from: e[0],
 				to: e[0],
 				factor: 0
 			};
-			const n = e[0], r = e[e.length - 1];
-			if (a <= n.percent) {
-				const t = e[1].percent - n.percent;
+			let n = e[0], r = e[e.length - 1];
+			if (t <= n.percent) {
+				let r = e[1].percent - n.percent;
 				return {
 					from: n,
 					to: e[1],
-					factor: t === 0 ? 1 : (a - n.percent) / t
+					factor: r === 0 ? 1 : (t - n.percent) / r
 				};
 			}
-			if (a >= r.percent) {
-				const t = e[e.length - 2], s = r.percent - t.percent;
+			if (t >= r.percent) {
+				let n = e[e.length - 2], i = r.percent - n.percent;
 				return {
-					from: t,
+					from: n,
 					to: r,
-					factor: s === 0 ? 1 : (a - t.percent) / s
+					factor: i === 0 ? 1 : (t - n.percent) / i
 				};
 			}
-			for (let t = 0; t < e.length - 1; t++) if (a >= e[t].percent && a <= e[t + 1].percent) {
-				const s = e[t + 1].percent - e[t].percent;
+			for (let n = 0; n < e.length - 1; n++) if (t >= e[n].percent && t <= e[n + 1].percent) {
+				let r = e[n + 1].percent - e[n].percent;
 				return {
-					from: e[t],
-					to: e[t + 1],
-					factor: s === 0 ? 1 : (a - e[t].percent) / s
+					from: e[n],
+					to: e[n + 1],
+					factor: r === 0 ? 1 : (t - e[n].percent) / r
 				};
 			}
 			return {
@@ -1705,130 +1584,104 @@
 				factor: 0
 			};
 		}
-		/**
-		* Get the active discrete value for a property at a given percent.
-		* Returns the value from the last keyframe at or before the percent.
-		* @param {string} key - The flattened property key
-		* @param {number} percent - The current position (0-100)
-		* @returns {*}
-		*/
-		getDiscrete(e, a) {
-			const n = this._keyFrames[e] || this.keyframes.filter((t) => e in t.values);
+		getDiscrete(e, t) {
+			let n = this._keyFrames[e] || this.keyframes.filter((t) => e in t.values);
 			if (n.length === 0) return null;
 			let r = n[0];
-			for (const t of n) if (t.percent <= a) r = t;
+			for (let e of n) if (e.percent <= t) r = e;
 			else break;
 			return r.values[e].value;
 		}
-		/**
-		* Get the default (identity) value for a CSS function.
-		* Used as a fallback when a function appears in one keyframe but not another.
-		* @param {string} key - The flattened key (e.g. "transform:translateX")
-		* @returns {NumericValue[]}
-		*/
 		getDefault(e) {
-			const a = e.split(":")[1];
-			return a && b[a] ? b[a] : [{
+			let t = e.split(":")[1];
+			return t && n[t] ? n[t] : [{
 				value: 0,
 				unit: ""
 			}];
 		}
-		/**
-		* Calculate interpolated CSS styles at a given position.
-		* @param {number} pos - Animation position where 0 = start, 1 = end. Values outside 0-1 extrapolate.
-		* @returns {InterpolatedStyles} An object of CSS property names to their computed string values.
-		*/
 		getFrame(e) {
-			const a = e * 100, n = this._allKeys, r = {};
-			for (const t of n) {
-				const s = this._keyFrames[t];
-				if (!s || s.length === 0) continue;
-				const i = s[0].values[t];
-				if (i && i.discrete) {
-					r[t] = this.getDiscrete(t, a);
+			let t = e * 100, n = this._allKeys, a = {};
+			for (let e of n) {
+				let n = this._keyFrames[e];
+				if (!n || n.length === 0) continue;
+				let o = n[0].values[e];
+				if (o && o.discrete) {
+					a[e] = this.getDiscrete(e, t);
 					continue;
 				}
-				const { from: l, to: u, factor: c } = this.findFramesAndFactor(s, a), o = l.values[t], d = u.values[t];
-				if (o && "red" in o) {
-					r[t] = this.lerpColor(o, d, c);
+				let { from: s, to: c, factor: l } = this.findFramesAndFactor(n, t), u = s.values[e], d = c.values[e];
+				if (u && "red" in u) {
+					a[e] = this.lerpColor(u, d, l);
 					continue;
 				}
-				if (o && o.args) {
-					const m = d.args || this.getDefault(t), h = this.getDefault(t), v = Math.max(o.args.length, m.length), k = [];
-					for (let f = 0; f < v; f++) {
-						const x = o.args[f] || h[f] || {
+				if (u && u.args) {
+					let t = d.args || this.getDefault(e), n = this.getDefault(e), o = Math.max(u.args.length, t.length), s = [];
+					for (let e = 0; e < o; e++) {
+						let r = u.args[e] || n[e] || {
 							value: 0,
 							unit: ""
-						}, _ = m[f] || h[f] || {
+						}, i = t[e] || n[e] || {
 							value: 0,
 							unit: ""
 						};
-						k.push({
-							value: this.lerp(x.value, _.value, c),
-							unit: x.unit || _.unit
+						s.push({
+							value: this.lerp(r.value, i.value, l),
+							unit: r.unit || i.unit
 						});
 					}
-					const w = I[t.includes(":") ? t.substring(t.indexOf(":") + 1) : t];
-					if (w) for (const f of k) f.value = Math.min(w[1], Math.max(w[0], f.value));
-					const F = { args: k };
-					(o.color || d.color) && (F.color = this.lerpColor(o.color || y, d.color || y, c)), r[t] = F;
+					let c = r[e.includes(":") ? e.substring(e.indexOf(":") + 1) : e];
+					if (c) for (let e of s) e.value = Math.min(c[1], Math.max(c[0], e.value));
+					let f = { args: s };
+					(u.color || d.color) && (f.color = this.lerpColor(u.color || i, d.color || i, l)), a[e] = f;
 					continue;
 				}
-				if (o && "value" in o) {
-					const m = d || this.getDefault(t)[0];
-					let h = this.lerp(o.value, m.value, c);
-					const v = I[t];
-					v && (h = Math.min(v[1], Math.max(v[0], h))), r[t] = {
-						value: h,
-						unit: o.unit
+				if (u && "value" in u) {
+					let t = d || this.getDefault(e)[0], n = this.lerp(u.value, t.value, l), i = r[e];
+					i && (n = Math.min(i[1], Math.max(i[0], n))), a[e] = {
+						value: n,
+						unit: u.unit
 					};
 				}
 			}
-			return this.toStyles(r);
+			return this.toStyles(a);
 		}
-		/**
-		* Convert the internal interpolated results into a flat CSS styles object.
-		* Reassembles function-list properties (transform, filter) from their individual parts.
-		* @param {Object<string, NumericValue|ColorValue|MultiArgValue|*>} results
-		* @returns {InterpolatedStyles}
-		*/
 		toStyles(e) {
-			const a = {}, n = {};
-			for (const r in e) {
-				const t = e[r], s = r.indexOf(":");
-				if (s !== -1) {
-					const i = r.substring(0, s), l = r.substring(s + 1);
-					if (g.has(i)) {
-						if (n[i] || (n[i] = {}), t.args) if (l.startsWith("drop-shadow-")) {
-							const u = l.replace(/-\d+$/, ""), c = t.args.map((o) => `${this.format(o.value)}${o.unit}`).join(" ");
-							if (t.color) {
-								const o = t.color, d = o.alpha < 1 ? `rgba(${o.red},${o.green},${o.blue},${o.alpha})` : `rgb(${o.red},${o.green},${o.blue})`;
-								n[i][l] = `${u}(${c} ${d})`;
-							} else n[i][l] = `${u}(${c})`;
-						} else n[i][l] = `${l}(${t.args.map((u) => `${this.format(u.value)}${u.unit}`).join(", ")})`;
-						else n[i][l] = `${l}(${this.format(t.value)}${t.unit})`;
+			let n = {}, r = {};
+			for (let i in e) {
+				let a = e[i], o = i.indexOf(":");
+				if (o !== -1) {
+					let e = i.substring(0, o), n = i.substring(o + 1);
+					if (t.has(e)) {
+						if (r[e] || (r[e] = {}), a.args) if (n.startsWith("drop-shadow-")) {
+							let t = n.replace(/-\d+$/, ""), i = a.args.map((e) => `${this.format(e.value)}${e.unit}`).join(" ");
+							if (a.color) {
+								let o = a.color, s = o.alpha < 1 ? `rgba(${o.red},${o.green},${o.blue},${o.alpha})` : `rgb(${o.red},${o.green},${o.blue})`;
+								r[e][n] = `${t}(${i} ${s})`;
+							} else r[e][n] = `${t}(${i})`;
+						} else r[e][n] = `${n}(${a.args.map((e) => `${this.format(e.value)}${e.unit}`).join(", ")})`;
+						else r[e][n] = `${n}(${this.format(a.value)}${a.unit})`;
 						continue;
 					}
 				}
-				if (typeof t == "string" || typeof t == "number") {
-					a[r] = t;
+				if (typeof a == "string" || typeof a == "number") {
+					n[i] = a;
 					continue;
 				}
-				if (t && "red" in t) {
-					a[r] = t.alpha < 1 ? `rgba(${t.red},${t.green},${t.blue},${t.alpha})` : `rgb(${t.red},${t.green},${t.blue})`;
+				if (a && "red" in a) {
+					n[i] = a.alpha < 1 ? `rgba(${a.red},${a.green},${a.blue},${a.alpha})` : `rgb(${a.red},${a.green},${a.blue})`;
 					continue;
 				}
-				if (t && "value" in t) {
-					a[r] = `${this.format(t.value)}${t.unit}`;
+				if (a && "value" in a) {
+					n[i] = `${this.format(a.value)}${a.unit}`;
 					continue;
 				}
-				a[r] = t;
+				n[i] = a;
 			}
-			for (const r in n) {
-				const t = n[r], i = (this._orders[r] || Object.keys(t)).filter((l) => t[l]).map((l) => t[l]);
-				i.length > 0 && (a[r] = i.join(" "));
+			for (let e in r) {
+				let t = r[e], i = (this._orders[e] || Object.keys(t)).filter((e) => t[e]).map((e) => t[e]);
+				i.length > 0 && (n[e] = i.join(" "));
 			}
-			return a;
+			return n;
 		}
 	};
 	//#endregion
@@ -2082,7 +1935,7 @@
 		*/
 		constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, lockScroll = true, zIndex = 9999 } = {}) {
 			super();
-			this.#spring = new b$1({
+			this.#spring = new b({
 				attraction,
 				friction
 			});
@@ -2224,7 +2077,7 @@
 			this.#revealFull = this.revealAt + (1 - this.revealAt) / 2;
 			this.#sourceRevealUntil = this.sourceRevealUntil;
 			this.#reconcileBorderColors(fromMeasure, toMeasure);
-			this.#frames = new C(this.#buildKeyframes(fromMeasure, toMeasure));
+			this.#frames = new c(this.#buildKeyframes(fromMeasure, toMeasure));
 			this.#removeBlob();
 			this.#createBlob(fromMeasure, toMeasure);
 			this.#markElements(phase);

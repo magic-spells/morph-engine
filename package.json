@@ -1,6 +1,6 @@
 {
 	"name": "@magic-spells/morph-engine",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Shared-element morph engine — a spring-driven blob morphs from a source element's rect and styles to a target's, so UI grows out of what you clicked",
 	"author": "Cory Schulz",
 	"license": "MIT",
@@ -54,7 +54,7 @@
 		"not ie <= 11"
 	],
 	"dependencies": {
-		"@magic-spells/frame-engine": "^1.0.0",
+		"@magic-spells/frame-engine": "^1.0.1",
 		"@magic-spells/physics-engine": "^1.0.0"
 	},
 	"devDependencies": {

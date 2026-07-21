@@ -319,16 +319,46 @@ var MorphEngine = class extends EventEmitter {
 	}
 	/**
 	* Morphs back from the target to the source. Called while showing, it
-	* reverses the in-flight morph.
+	* reverses the in-flight morph (any `from` is ignored — a reversal must return
+	* to the element the show started from, that's the point of reversal).
+	*
+	* From the settled `'shown'` state an optional `from` retargets the destination:
+	* the morph returns to that element instead of the one `show()` captured (e.g. the
+	* current slide of a carousel the user swiped while fullscreen). The outgoing
+	* source is fully restored and the incoming one taken over with the same
+	* inline-style bookkeeping `show()` uses; `hide()` then re-measures as usual. With
+	* no `from` (or `from` === the current source) behaviour is unchanged.
+	* @param {Object} [options]
+	* @param {HTMLElement} [options.from] - Element to morph back to, honored only from
+	*   the 'shown' state and ignored during a reversal
 	* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	*/
-	hide() {
+	hide({ from } = {}) {
 		if (this.#state === "idle" || this.#state === "hiding") {
 			console.warn(`MorphEngine: hide() ignored — ${this.#state}`);
 			return Promise.resolve(false);
 		}
 		if (this.#state === "showing") return this.#reverse("hiding");
+		if (from && from !== this.#sourceElement) this.#retargetSource(from);
 		return this.#morph(this.#targetElement, this.#sourceElement, "hiding");
+	}
+	/**
+	* Swaps the element the pending hide will morph back to. Only reachable from the
+	* 'shown' state (see hide()). The outgoing source — sitting `visibility: hidden`
+	* since it "became" the target — is fully restored and dropped from #savedInline so
+	* it can never leak inline styles later; the incoming source is saved and hidden
+	* exactly as show() prepares a source, then becomes #sourceElement so the hide
+	* re-measures and reveals it at the p→1 end.
+	* @param {HTMLElement} newSource - Element to morph back to instead of the captured source
+	*/
+	#retargetSource(newSource) {
+		const previousSource = this.#sourceElement;
+		this.#restoreInline(previousSource);
+		previousSource.removeAttribute("morphing");
+		previousSource.removeAttribute("morph-shown");
+		this.#saveInline(newSource);
+		newSource.style.visibility = "hidden";
+		this.#sourceElement = newSource;
 	}
 	/**
 	* Aborts any morph and restores both elements to their pre-show resting state.

@@ -55,27 +55,28 @@ new MorphEngine({
 
 ## API
 
-| Member | Description |
-| --- | --- |
-| `show({ from, to, display? })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. |
-| `hide()` | Morph back (remembers the pair, re-measures both). Same promise semantics. |
-| `stop()` | Abort and restore both elements to their pre-show resting state. |
-| `destroy()` | `stop()` + remove all listeners. |
-| `setAttraction(n)` / `setFriction(n)` | Live spring tuning. |
-| `state` | `'idle' \| 'showing' \| 'shown' \| 'hiding'` |
-| `progress` | Last-known progress (overshoots past 1 while settling). |
+| Member                                | Description                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show({ from, to, display? })`        | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time.                                                                                                                                                                                   |
+| `hide()`                              | Morph back (remembers the pair, re-measures both). Same promise semantics.                                                                                                                                                                                                                                            |
+| `stop({ restoreSource? })`            | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
+| `restoreSource()`                     | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
+| `destroy()`                           | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
+| `setAttraction(n)` / `setFriction(n)` | Live spring tuning.                                                                                                                                                                                                                                                                                                   |
+| `state`                               | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
+| `progress`                            | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
 
 ## Events
 
 `on(event, fn)` / `off(event, fn)` — payloads carry the logical `{ from, to }` pair.
 
-| Event | When |
-| --- | --- |
-| `show` / `hide` | Morph starts (including a mid-flight reversal). |
-| `change` | Every frame — `{ progress, phase }`. |
+| Event                 | When                                                                                                                                                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show` / `hide`       | Morph starts (including a mid-flight reversal).                                                                                                                                                                                                                                                                |
+| `change`              | Every frame — `{ progress, phase }`.                                                                                                                                                                                                                                                                           |
 | `reveal` / `unreveal` | The run's destination element starts/stops painting — `{ from, to }` in run orientation. Fires at the reveal boundary while the destination is still at opacity 0, which makes `reveal` the seam-free moment for layer promotion (e.g. `dialog.showModal()`; promoting at `shown` repaints a visible surface). |
-| `shown` / `hidden` | Spring settled. |
-| `stop` | `stop()` was called — `{ progress }`. |
+| `shown` / `hidden`    | Spring settled.                                                                                                                                                                                                                                                                                                |
+| `stop`                | `stop()` was called — `{ progress }`.                                                                                                                                                                                                                                                                          |
 
 ## Styling hooks
 

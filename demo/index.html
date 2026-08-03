@@ -280,6 +280,8 @@
 				inset: 0;
 				z-index: 900;
 				background: rgba(5, 4, 10, 0.65);
+				-webkit-backdrop-filter: blur(8px);
+				backdrop-filter: blur(8px);
 				opacity: 0;
 				pointer-events: none;
 				transition: opacity 0.3s ease;
@@ -828,7 +830,9 @@
 
 	<body>
 		<header class="hero">
-			<a class="hero-badge" href="https://github.com/magic-spells/morph-engine">@magic-spells / morph-engine</a>
+			<a class="hero-badge" href="https://github.com/magic-spells/morph-engine"
+				>@magic-spells / morph-engine</a
+			>
 			<h1>Interfaces that <em>become</em><br />each other</h1>
 			<p>
 				A spring-driven blob measures what you clicked, morphs its rect, radius, color, border and
@@ -969,9 +973,7 @@
 					turns it around wherever it is.
 				</p>
 
-				<button
-					class="task-card release-card"
-					data-title="Ship morph-engine v1.1.0">
+				<button class="task-card release-card" data-title="Ship morph-engine v1.1.0">
 					<span class="tag tag-build">Release</span>
 					<span class="task-title">Ship morph-engine v1.1.0</span>
 					<span class="task-snippet"
@@ -992,8 +994,8 @@
 					widest geometry jump on the page. The pill's 1px edge has nowhere to land: this panel is
 					<b>borderless</b>. Rather than flash toward the text color as the border thins away, the
 					engine <b>holds the edge's own color</b> and collapses its width to zero, so the line just
-					quietly recedes. Same <b>showModal()</b> handoff at the reveal point — this pill lands modal
-					too.
+					quietly recedes. Same <b>showModal()</b> handoff at the reveal point — this pill lands
+					modal too.
 				</p>
 
 				<button class="confirm-pill">Delete workspace…</button>
@@ -1145,21 +1147,20 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			<h2 class="panel-title">Ship morph-engine v1.1.0</h2>
 			<div class="panel-description">
 				<p>
-					This surface is a real dialog element. While the spring was flying it stayed closed —
-					the engine measured it invisibly and drove it in normal flow, exactly like any other
-					morph target.
+					This surface is a real dialog element. While the spring was flying it stayed closed — the
+					engine measured it invisibly and drove it in normal flow, exactly like any other morph
+					target.
 				</p>
 				<p>
-					It was promoted with showModal() at the reveal point, while still at opacity 0 — so
-					the top-layer handoff repainted an invisible surface and it faded in already modal:
-					top layer, inert page, focus trapped in here, and Escape runs the reverse morph
-					instead of snapping closed (the cancel event is intercepted). Closing demotes it from
-					the top layer on the exact frame the blob takes over, so there is no seam in either
-					direction.
+					It was promoted with showModal() at the reveal point, while still at opacity 0 — so the
+					top-layer handoff repainted an invisible surface and it faded in already modal: top layer,
+					inert page, focus trapped in here, and Escape runs the reverse morph instead of snapping
+					closed (the cancel event is intercepted). Closing demotes it from the top layer on the
+					exact frame the blob takes over, so there is no seam in either direction.
 				</p>
 				<p>
-					Tab around — you can't leave. Click outside — the ::backdrop routes it back as a
-					close. This is the choreography a dialog-panel element would package up.
+					Tab around — you can't leave. Click outside — the ::backdrop routes it back as a close.
+					This is the choreography a dialog-panel element would package up.
 				</p>
 			</div>
 			<div class="panel-meta">

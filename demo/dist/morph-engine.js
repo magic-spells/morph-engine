@@ -1797,6 +1797,23 @@
 		"willChange",
 		"transition"
 	];
+	var scrollLockCount = 0;
+	var savedBodyOverflow = "";
+	/** Acquires one share of the module-level body scroll lock. */
+	function acquireScrollLock() {
+		if (scrollLockCount++ === 0) {
+			savedBodyOverflow = document.body.style.overflow;
+			document.body.style.overflow = "hidden";
+		}
+	}
+	/** Releases one share of the module-level body scroll lock. */
+	function releaseScrollLock() {
+		if (scrollLockCount === 0) return;
+		if (--scrollLockCount === 0) {
+			document.body.style.overflow = savedBodyOverflow;
+			savedBodyOverflow = "";
+		}
+	}
 	function clamp(value, min, max) {
 		return Math.min(max, Math.max(min, value));
 	}
@@ -1889,10 +1906,13 @@
 	* geometry so it inherits the spring's settle bounce — on the way in.
 	*
 	* show() morphs source → target; hide() morphs back. Calling either mid-flight
-	* reverses the spring in place. Emits: show, hide, change, shown, hidden, stop.
+	* reverses the spring in place. Emits: show, hide, change, shown, hidden, stop,
+	* complete.
 	*/
 	var MorphEngine = class extends EventEmitter {
 		#spring;
+		#attraction;
+		#friction;
 		#frames = null;
 		#blob = null;
 		#cloneWrapper = null;
@@ -1900,12 +1920,13 @@
 		#state = "idle";
 		#p = 0;
 		#resolveRun = null;
+		#pendingComplete = null;
 		#sourceElement = null;
 		#targetElement = null;
 		#heldSource = null;
 		#displayOverride = null;
 		#savedInline = /* @__PURE__ */ new Map();
-		#savedBodyOverflow = null;
+		#holdsScrollLock = false;
 		#fromMeasure = null;
 		#toMeasure = null;
 		#toElement = null;
@@ -1915,6 +1936,7 @@
 		#revealFull = .875;
 		#sourceRevealed = false;
 		#sourceRevealUntil = .25;
+		#cloneFadeUntil = .25;
 		#springTarget = TRAVEL;
 		#lastPosition = 0;
 		#settleCount = 0;
@@ -1930,12 +1952,21 @@
 		* @param {number} [options.cloneFadeUntil=0.25] - Progress where the source-content clone
 		*   finishes dissolving
 		* @param {boolean} [options.cloneContents=true] - Clone the source's content into the blob
+		* @param {Object} [options.hide] - Sparse overrides for the hide leg
+		* @param {number} [options.hide.attraction] - Hide spring attraction
+		* @param {number} [options.hide.friction] - Hide spring friction
+		* @param {number} [options.hide.revealAt] - Hide target reveal start
+		* @param {number} [options.hide.sourceRevealUntil] - Hide source reveal end
+		* @param {number} [options.hide.cloneFadeUntil] - Hide clone fade end
+		* @param {boolean} [options.hide.cloneContents] - Hide clone-content setting
 		* @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 		*   hidden — a scroll mid-morph would strand the fixed-position blob
 		* @param {number} [options.zIndex=9999] - Blob z-index
 		*/
-		constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, lockScroll = true, zIndex = 9999 } = {}) {
+		constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, hide = {}, lockScroll = true, zIndex = 9999 } = {}) {
 			super();
+			this.#attraction = attraction;
+			this.#friction = friction;
 			this.#spring = new b({
 				attraction,
 				friction
@@ -1945,6 +1976,7 @@
 			this.sourceRevealUntil = sourceRevealUntil;
 			this.cloneFadeUntil = cloneFadeUntil;
 			this.cloneContents = cloneContents;
+			this.hideConfig = hide;
 			this.lockScroll = lockScroll;
 			this.zIndex = zIndex;
 			this.#spring.on("change", ({ position }) => {
@@ -1983,14 +2015,33 @@
 		* @param {HTMLElement} options.from - Source element (stays hidden while shown)
 		* @param {HTMLElement} options.to - Target element (revealed as the blob arrives)
 		* @param {string} [options.display] - display value applied to a display:none target
+		* @param {boolean} [options.oneWay=false] - Complete and hand ownership to the target on settle
+		* @param {number} [options.attraction] - One-off spring attraction
+		* @param {number} [options.friction] - One-off spring friction
+		* @param {number} [options.revealAt] - One-off target reveal start
+		* @param {number} [options.sourceRevealUntil] - One-off source reveal end
+		* @param {number} [options.cloneFadeUntil] - One-off clone fade end
+		* @param {boolean} [options.cloneContents] - One-off clone-content setting
 		* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 		*/
-		show({ from, to, display = null } = {}) {
+		show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents } = {}) {
+			const overrides = {
+				attraction,
+				friction,
+				revealAt,
+				sourceRevealUntil,
+				cloneFadeUntil,
+				cloneContents
+			};
 			if (this.#state === "showing" || this.#state === "shown") {
 				console.warn(`MorphEngine: show() ignored — already ${this.#state}`);
 				return Promise.resolve(false);
 			}
-			if (this.#state === "hiding") return this.#reverse("showing");
+			if (this.#state === "hiding") {
+				const promise = this.#reverse("showing", overrides);
+				if (oneWay) this.#pendingComplete = { restoreSource: false };
+				return promise;
+			}
 			if (!from || !to) throw new Error("MorphEngine: show() requires { from, to } elements.");
 			this.#sourceElement = from;
 			this.#targetElement = to;
@@ -1998,24 +2049,59 @@
 			this.restoreSource();
 			this.#saveInline(from);
 			this.#saveInline(to);
-			if (this.lockScroll) {
-				this.#savedBodyOverflow = document.body.style.overflow;
-				document.body.style.overflow = "hidden";
+			if (this.lockScroll && !this.#holdsScrollLock) {
+				this.#holdsScrollLock = true;
+				acquireScrollLock();
 			}
-			return this.#morph(from, to, "showing");
+			const promise = this.#morph(from, to, "showing", overrides);
+			if (oneWay) this.#pendingComplete = { restoreSource: false };
+			return promise;
 		}
 		/**
 		* Morphs back from the target to the source. Called while showing, it
 		* reverses the in-flight morph.
+		* @param {Object} [options]
+		* @param {number} [options.attraction] - One-off spring attraction
+		* @param {number} [options.friction] - One-off spring friction
+		* @param {number} [options.revealAt] - One-off target reveal start
+		* @param {number} [options.sourceRevealUntil] - One-off source reveal end
+		* @param {number} [options.cloneFadeUntil] - One-off clone fade end
+		* @param {boolean} [options.cloneContents] - One-off clone-content setting
 		* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 		*/
-		hide() {
+		hide({ attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents } = {}) {
+			const overrides = {
+				attraction,
+				friction,
+				revealAt,
+				sourceRevealUntil,
+				cloneFadeUntil,
+				cloneContents
+			};
 			if (this.#state === "idle" || this.#state === "hiding") {
 				console.warn(`MorphEngine: hide() ignored — ${this.#state}`);
 				return Promise.resolve(false);
 			}
-			if (this.#state === "showing") return this.#reverse("hiding");
-			return this.#morph(this.#targetElement, this.#sourceElement, "hiding");
+			if (this.#state === "showing") return this.#reverse("hiding", overrides);
+			return this.#morph(this.#targetElement, this.#sourceElement, "hiding", overrides);
+		}
+		/**
+		* Hands a shown or showing one-way morph to the target without emitting stop.
+		* @param {Object} [options]
+		* @param {boolean} [options.restoreSource=false] - Fully restore the source on handoff
+		* @returns {boolean} True when completed immediately or armed for settle.
+		*/
+		complete({ restoreSource = false } = {}) {
+			if (this.#state === "shown") {
+				this.#finalizeComplete(restoreSource);
+				return true;
+			}
+			if (this.#state === "showing") {
+				this.#pendingComplete = { restoreSource };
+				return true;
+			}
+			console.warn(`MorphEngine: complete() ignored — ${this.#state}`);
+			return false;
 		}
 		/**
 		* Aborts any morph and restores both elements to their pre-show resting state.
@@ -2032,6 +2118,7 @@
 		* @param {boolean} [options.restoreSource=true] - Restore the source now.
 		*/
 		stop({ restoreSource = true } = {}) {
+			this.#pendingComplete = null;
 			if (this.#state === "idle") return;
 			this.#supersede();
 			this.#spring.stop();
@@ -2078,12 +2165,14 @@
 			this.#spring.removeAllListeners();
 			this.removeAllListeners();
 		}
-		/** @param {number} attraction - Spring attraction (0, 1) exclusive, live-tunable */
+		/** @param {number} attraction - Show/default attraction, applied live to the spring */
 		setAttraction(attraction) {
+			this.#attraction = attraction;
 			this.#spring.setAttraction(attraction);
 		}
-		/** @param {number} friction - Spring friction (0, 1) exclusive, live-tunable */
+		/** @param {number} friction - Show/default friction, applied live to the spring */
 		setFriction(friction) {
+			this.#friction = friction;
 			this.#spring.setFriction(friction);
 		}
 		/**
@@ -2092,8 +2181,12 @@
 		* cloned and frozen on top), springs to toElement's rect and styles, and
 		* reveals toElement across the final stretch.
 		*/
-		#morph(fromElement, toElement, phase) {
+		#morph(fromElement, toElement, phase, overrides = {}) {
+			this.#pendingComplete = null;
 			this.#supersede();
+			const config = this.#resolveConfig(phase, overrides);
+			this.#spring.setAttraction(config.attraction);
+			this.#spring.setFriction(config.friction);
 			const fromMeasure = this.#measure(fromElement);
 			const toMeasure = this.#measure(toElement);
 			this.#fromMeasure = fromMeasure;
@@ -2103,13 +2196,14 @@
 			this.#state = phase;
 			this.#revealed = false;
 			this.#sourceRevealed = false;
-			this.#revealStart = this.revealAt;
-			this.#revealFull = this.revealAt + (1 - this.revealAt) / 2;
-			this.#sourceRevealUntil = this.sourceRevealUntil;
+			this.#revealStart = config.revealAt;
+			this.#revealFull = config.revealAt + (1 - config.revealAt) / 2;
+			this.#sourceRevealUntil = config.sourceRevealUntil;
+			this.#cloneFadeUntil = config.cloneFadeUntil;
 			this.#reconcileBorderColors(fromMeasure, toMeasure);
 			this.#frames = new c(this.#buildKeyframes(fromMeasure, toMeasure));
 			this.#removeBlob();
-			this.#createBlob(fromMeasure, toMeasure);
+			this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
 			this.#markElements(phase);
 			fromElement.style.transition = "none";
 			toElement.style.transition = "none";
@@ -2134,8 +2228,12 @@
 		* the reveal window un-reveals, the clone fades back in, and the blob lands
 		* exactly where it started.
 		*/
-		#reverse(newPhase) {
+		#reverse(newPhase, overrides = {}) {
+			this.#pendingComplete = null;
 			this.#supersede();
+			const config = this.#resolveConfig(newPhase, overrides);
+			this.#spring.setAttraction(config.attraction);
+			this.#spring.setFriction(config.friction);
 			this.#state = newPhase;
 			this.#markElements(newPhase);
 			const targetPosition = newPhase === "showing" ? this.#shownPosition : TRAVEL - this.#shownPosition;
@@ -2171,6 +2269,11 @@
 			this.#resolveRun = null;
 			if (this.#state === "showing") this.#finalizeShown();
 			else this.#finalizeHidden();
+			if (this.#state === "shown" && this.#pendingComplete) {
+				const { restoreSource } = this.#pendingComplete;
+				this.#pendingComplete = null;
+				this.#finalizeComplete(restoreSource);
+			}
 			if (resolve) resolve(true);
 		}
 		#finalizeShown() {
@@ -2218,10 +2321,58 @@
 				to: target
 			});
 		}
+		/**
+		* Releases a shown morph to app ownership while preserving the target's state.
+		* @param {boolean} restoreSource - Whether to fully restore the source element
+		*/
+		#finalizeComplete(restoreSource) {
+			const source = this.#sourceElement;
+			const target = this.#targetElement;
+			this.#savedInline.delete(target);
+			target.removeAttribute("morph-shown");
+			if (restoreSource) this.#restoreInline(source);
+			else {
+				this.#restoreProperties(source, ["transition"]);
+				this.#savedInline.delete(source);
+			}
+			this.#unlockScroll();
+			this.#sourceElement = null;
+			this.#targetElement = null;
+			this.#displayOverride = null;
+			this.#state = "idle";
+			this.#p = 0;
+			this.emit("complete", {
+				from: source,
+				to: target
+			});
+		}
+		/** Releases this engine's share of the module-level body scroll lock. */
 		#unlockScroll() {
-			if (this.#savedBodyOverflow === null) return;
-			document.body.style.overflow = this.#savedBodyOverflow;
-			this.#savedBodyOverflow = null;
+			if (!this.#holdsScrollLock) return;
+			this.#holdsScrollLock = false;
+			releaseScrollLock();
+		}
+		/**
+		* Resolves sparse public, hide-leg, and per-call settings for a run.
+		* @param {string} phase - 'showing' or 'hiding'
+		* @param {Object} overrides - Sparse per-call overrides
+		* @returns {Object} Resolved spring and choreography settings
+		*/
+		#resolveConfig(phase, overrides = {}) {
+			const config = {
+				attraction: this.#attraction,
+				friction: this.#friction,
+				revealAt: this.revealAt,
+				sourceRevealUntil: this.sourceRevealUntil,
+				cloneFadeUntil: this.cloneFadeUntil,
+				cloneContents: this.cloneContents
+			};
+			const keys = Object.keys(config);
+			if (phase === "hiding") {
+				for (const key of keys) if (this.hideConfig[key] !== void 0) config[key] = this.hideConfig[key];
+			}
+			for (const key of keys) if (overrides[key] !== void 0) config[key] = overrides[key];
+			return config;
 		}
 		/** Resolves a superseded run's promise with false. */
 		#supersede() {
@@ -2241,7 +2392,7 @@
 			Object.assign(this.#blob.style, styles);
 			this.#blob.style.boxShadow = lerpShadow(this.#fromMeasure.shadow, this.#toMeasure.shadow, p);
 			if (this.#cloneWrapper) {
-				const fade = this.cloneFadeUntil > 0 ? clamp(1 - p / this.cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
+				const fade = this.#cloneFadeUntil > 0 ? clamp(1 - p / this.#cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
 				this.#cloneWrapper.style.opacity = String(fade);
 			}
 			if (p >= this.#revealStart) {
@@ -2410,7 +2561,7 @@
 				}
 			};
 		}
-		#createBlob(fromMeasure, toMeasure) {
+		#createBlob(fromMeasure, toMeasure, cloneContents) {
 			const blob = document.createElement("morph-blob");
 			const borderStyle = toMeasure.borderStyle !== "none" ? toMeasure.borderStyle : fromMeasure.borderStyle !== "none" ? fromMeasure.borderStyle : "solid";
 			Object.assign(blob.style, {
@@ -2438,7 +2589,7 @@
 				blob.style.backgroundRepeat = backgroundMeasure.backgroundRepeat;
 				blob.style.backgroundPosition = backgroundMeasure.backgroundPosition;
 			}
-			if (this.cloneContents) this.#createClone(blob, fromMeasure);
+			if (cloneContents) this.#createClone(blob, fromMeasure);
 			document.body.appendChild(blob);
 			this.#blob = blob;
 		}
@@ -2513,7 +2664,191 @@
 		}
 	};
 	//#endregion
+	//#region src/morph-group.js
+	/**
+	* Per-item launch offset. A negative stagger runs the set in reverse order —
+	* the last item launches first — same convention as timeline-engine's clips.
+	* @param {number} stagger - Milliseconds between launches, sign picks the order
+	* @param {number} index - The item's position in the set
+	* @param {number} last - The last index in the set
+	* @returns {number} Delay in milliseconds
+	*/
+	function staggerDelay(stagger, index, last) {
+		return (stagger >= 0 ? index : last - index) * Math.abs(stagger);
+	}
+	/**
+	* Fans a shared set of options out across a reusable pool of MorphEngine instances.
+	* This is a group trigger, not a timeline: each spring owns its own flight and settle.
+	*/
+	var MorphGroup = class extends EventEmitter {
+		#options;
+		#engines = [];
+		#pendingLaunches = /* @__PURE__ */ new Map();
+		#aggregateCancels = /* @__PURE__ */ new Set();
+		#operation = 0;
+		/** @param {Object} [options] - Options shared by every pooled MorphEngine */
+		constructor(options = {}) {
+			super();
+			this.#options = options;
+		}
+		/** @returns {MorphEngine[]} A snapshot of the pooled engines */
+		get engines() {
+			return this.#engines.slice();
+		}
+		/** @returns {string} Advisory aggregate state */
+		get state() {
+			if (this.#engines.every((engine) => engine.state === "idle")) return "idle";
+			if (this.#engines.some((engine) => engine.state === "showing")) return "showing";
+			if (this.#engines.some((engine) => engine.state === "hiding")) return "hiding";
+			return "shown";
+		}
+		/**
+		* Morphs every pair with optional staggered launches. A negative stagger
+		* launches in reverse order (last pair first), matching timeline-engine.
+		* @param {{from: HTMLElement, to: HTMLElement, display?: string}[]} pairs
+		* @param {Object} [options]
+		* @param {number} [options.stagger=0] - Delay in milliseconds between launches
+		* @param {boolean} [options.oneWay=false] - Complete every engine after it settles
+		* @param {string} [options.display] - Shared display override
+		* @returns {Promise<boolean>} True only when every flight settles
+		*/
+		async show(pairs, { stagger = 0, oneWay = false, display, ...overrides } = {}) {
+			const operation = this.#startOperation();
+			const engines = pairs.map((pair, index) => this.#engineAt(index));
+			const cancelShown = this.#watchAggregate(engines, "shown", operation);
+			const cancelComplete = oneWay ? this.#watchAggregate(engines, "complete", operation) : () => {};
+			const last = pairs.length - 1;
+			const promises = pairs.map((pair, index) => {
+				const engine = engines[index];
+				const pairDisplay = pair.display !== void 0 ? pair.display : display;
+				return this.#schedule(staggerDelay(stagger, index, last), () => engine.show({
+					...overrides,
+					from: pair.from,
+					to: pair.to,
+					display: pairDisplay,
+					oneWay
+				}));
+			});
+			try {
+				return (await Promise.all(promises)).every(Boolean);
+			} finally {
+				cancelShown();
+				cancelComplete();
+			}
+		}
+		/**
+		* Reverses every live engine with optional staggered launches. A negative
+		* stagger reverses in reverse order (last live engine first).
+		* @param {Object} [options]
+		* @param {number} [options.stagger=0] - Delay in milliseconds between launches
+		* @returns {Promise<boolean>} True only when every live flight settles
+		*/
+		async hide({ stagger = 0, ...overrides } = {}) {
+			const operation = this.#startOperation();
+			const engines = this.#engines.filter((engine) => engine.state !== "idle");
+			const cancelHidden = this.#watchAggregate(engines, "hidden", operation);
+			const last = engines.length - 1;
+			try {
+				return (await Promise.all(engines.map((engine, index) => this.#schedule(staggerDelay(stagger, index, last), () => engine.state === "idle" ? false : engine.hide(overrides))))).every(Boolean);
+			} finally {
+				cancelHidden();
+			}
+		}
+		/** Fans stop() out and cancels any flights waiting in the stagger window. */
+		stop(options) {
+			this.#startOperation();
+			this.#engines.forEach((engine) => engine.stop(options));
+		}
+		/**
+		* Hands every live engine to its target without emitting stop.
+		* @param {Object} [options] - Options passed to MorphEngine.complete()
+		* @returns {boolean} True only when every live engine completed or armed
+		*/
+		completeAll(options) {
+			const operation = this.#startOperation();
+			const engines = this.#engines.filter((engine) => engine.state !== "idle");
+			const cancelComplete = this.#watchAggregate(engines, "complete", operation);
+			const completed = engines.map((engine) => engine.complete(options)).every(Boolean);
+			if (!completed) cancelComplete();
+			return completed;
+		}
+		/** Cancels pending launches, destroys the pool, and removes group listeners. */
+		destroy() {
+			this.#startOperation();
+			this.#engines.forEach((engine) => engine.destroy());
+			this.#engines = [];
+			this.removeAllListeners();
+		}
+		/** @returns {number} The new aggregate operation identifier */
+		#startOperation() {
+			this.#cancelPendingLaunches();
+			for (const cancel of [...this.#aggregateCancels]) cancel();
+			return ++this.#operation;
+		}
+		/** @param {number} index @returns {MorphEngine} The pooled engine for an item */
+		#engineAt(index) {
+			while (this.#engines.length <= index) this.#engines.push(new MorphEngine(this.#options));
+			return this.#engines[index];
+		}
+		/**
+		* Runs one launch now or after its stagger delay.
+		* @param {number} delay
+		* @param {Function} fn - Returns the engine's run promise
+		* @returns {Promise<boolean>}
+		*/
+		#schedule(delay, fn) {
+			if (delay <= 0) return fn();
+			return new Promise((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					this.#pendingLaunches.delete(timeout);
+					Promise.resolve().then(fn).then(resolve, reject);
+				}, delay);
+				this.#pendingLaunches.set(timeout, resolve);
+			});
+		}
+		/**
+		* Emits one aggregate event when every supplied engine reaches it.
+		* @param {MorphEngine[]} engines
+		* @param {string} event
+		* @param {number} operation
+		* @returns {Function} Removes the temporary listeners
+		*/
+		#watchAggregate(engines, event, operation) {
+			if (engines.length === 0) return () => {};
+			const remaining = new Set(engines);
+			const listeners = /* @__PURE__ */ new Map();
+			const cancel = () => {
+				for (const [engine, listener] of listeners) engine.off(event, listener);
+				listeners.clear();
+				this.#aggregateCancels.delete(cancel);
+			};
+			for (const engine of engines) {
+				const listener = () => {
+					engine.off(event, listener);
+					listeners.delete(engine);
+					remaining.delete(engine);
+					if (remaining.size > 0) return;
+					cancel();
+					if (operation === this.#operation) this.emit(event);
+				};
+				listeners.set(engine, listener);
+				engine.on(event, listener);
+			}
+			this.#aggregateCancels.add(cancel);
+			return cancel;
+		}
+		/** Resolves unlaunched staggered flights as superseded. */
+		#cancelPendingLaunches() {
+			for (const [timeout, resolve] of this.#pendingLaunches) {
+				clearTimeout(timeout);
+				resolve(false);
+			}
+			this.#pendingLaunches.clear();
+		}
+	};
+	//#endregion
 	exports.MorphEngine = MorphEngine;
+	exports.MorphGroup = MorphGroup;
 });
 
 //# sourceMappingURL=morph-engine.js.map

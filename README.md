@@ -1,6 +1,6 @@
 # @magic-spells/morph-engine
 
-**~8 KB** gzipped
+**~11 KB** gzipped
 
 Shared-element morph engine. A spring-driven `<morph-blob>` measures the element you clicked, morphs its rect, corner radii, background, border and shadow into a target element's, and reveals the target in lockstep with the blob's geometry — so the real element inherits the spring's settle. UI grows out of what you clicked, macOS-genie style.
 
@@ -45,26 +45,39 @@ new MorphEngine({
 	sourceRevealUntil: 0.25, // progress where the source reveal window ends (mirrors revealAt at the p→0 end)
 	cloneFadeUntil: 0.25,    // progress where the source-content clone finishes dissolving
 	cloneContents: true,     // clone the source's content into the blob
+	hide: {                  // sparse overrides for the hide leg
+		attraction: 0.18,
+		friction: 0.5
+	},
 	lockScroll: true,        // lock body scroll from show until fully hidden
 	zIndex: 9999,            // blob z-index
 	styleProperties: [...]   // computed styles to capture and morph (camelCase longhands)
 });
 ```
 
-`attraction` and `friction` are live-tunable mid-flight via `setAttraction()` / `setFriction()`.
+`hide` accepts sparse overrides for `attraction`, `friction`, `revealAt`,
+`sourceRevealUntil`, `cloneFadeUntil`, and `cloneContents`. The same keys can be passed to
+`show()` or `hide()` for a one-off flight. Precedence is per-call override → hide bag (hide leg
+only) → top-level/public field. Undefined values never override, so live mutations such as
+`morph.cloneContents = false` keep flowing through.
+
+`setAttraction()` and `setFriction()` apply live to the current spring and update the show/default
+settings used by future flights. A reversal immediately retunes the spring for its new direction;
+the interrupted flight keeps its original reveal and clone choreography.
 
 ## API
 
-| Member                                | Description                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show({ from, to, display? })`        | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time.                                                                                                                                                                                   |
-| `hide()`                              | Morph back (remembers the pair, re-measures both). Same promise semantics.                                                                                                                                                                                                                                            |
-| `stop({ restoreSource? })`            | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
-| `restoreSource()`                     | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
-| `destroy()`                           | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
-| `setAttraction(n)` / `setFriction(n)` | Live spring tuning.                                                                                                                                                                                                                                                                                                   |
-| `state`                               | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
-| `progress`                            | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
+| Member                                              | Description                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`.                                                                                                                              |
+| `hide({ ...overrides }?)`                           | Morph back (remembers the pair, re-measures both). Same promise semantics; no-argument `hide()` remains supported.                                                                                                                                                                                                    |
+| `complete({ restoreSource? })`                      | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.             |
+| `stop({ restoreSource? })`                          | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
+| `restoreSource()`                                   | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
+| `destroy()`                                         | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
+| `setAttraction(n)` / `setFriction(n)`               | Live spring tuning that also updates the show/default setting.                                                                                                                                                                                                                                                        |
+| `state`                                             | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
+| `progress`                                          | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
 
 ## Events
 
@@ -77,6 +90,52 @@ new MorphEngine({
 | `reveal` / `unreveal` | The run's destination element starts/stops painting — `{ from, to }` in run orientation. Fires at the reveal boundary while the destination is still at opacity 0, which makes `reveal` the seam-free moment for layer promotion (e.g. `dialog.showModal()`; promoting at `shown` repaints a visible surface). |
 | `shown` / `hidden`    | Spring settled.                                                                                                                                                                                                                                                                                                |
 | `stop`                | `stop()` was called — `{ progress }`.                                                                                                                                                                                                                                                                          |
+| `complete`            | A completed handoff — `{ from, to }`. This event is never reported as `stop`.                                                                                                                                                                                                                                  |
+
+## Concurrency
+
+A `MorphEngine` is intentionally single-flight. For N simultaneous morphs, use N engine instances
+or `MorphGroup`; the module-level body lock is refcounted, so the original body overflow is restored
+only after the final holder releases it. Use one engine per concurrent flight and never share an
+element between engines. Concurrent blobs with the same `zIndex` stack by DOM order, so assign
+different z-index values when their visual order matters.
+
+## MorphGroup
+
+`MorphGroup` pools one engine per pair index, fans lifecycle methods out, and emits aggregate
+`shown`, `hidden`, and `complete` events when the last participating engine reaches that state.
+`show()` resolves `true` only when every flight settles; `stop()` or `destroy()` cancels launches
+that are still waiting in the stagger window. Both `show()` and `hide()` take `stagger`
+(milliseconds between launches) — a **negative stagger runs the set in reverse order** (last item
+first), same convention as timeline-engine, so a group can fly home in the opposite order it
+arrived: `group.hide({ stagger: -60 })`.
+
+```js
+import { MorphGroup } from '@magic-spells/morph-engine';
+
+const group = new MorphGroup({
+	friction: 0.35,
+	hide: { friction: 0.45 }
+});
+
+const pairs = cards.map((from, index) => ({
+	from,
+	to: slots[index],
+	display: 'grid'
+}));
+
+await group.show(pairs, { stagger: 40, oneWay: true });
+
+group.engines;                    // inspect the pooled engines
+await group.hide({ stagger: -40 }); // fly home in reverse order
+group.stop(options);       // cancel delayed launches and stop live flights
+group.completeAll(options);
+group.destroy();
+```
+
+`group.state` is advisory: it is `idle` when every pooled engine is idle, otherwise it reports an
+active phase (or `shown`). A group is a shared trigger, deliberately not a scrub-able timeline—spring
+flights have no closed-form position-at-time.
 
 ## Styling hooks
 

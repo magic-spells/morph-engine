@@ -62,6 +62,26 @@ const MANAGED_PROPERTIES = [
 	'transition',
 ];
 
+let scrollLockCount = 0;
+let savedBodyOverflow = '';
+
+/** Acquires one share of the module-level body scroll lock. */
+function acquireScrollLock() {
+	if (scrollLockCount++ === 0) {
+		savedBodyOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+	}
+}
+
+/** Releases one share of the module-level body scroll lock. */
+function releaseScrollLock() {
+	if (scrollLockCount === 0) return;
+	if (--scrollLockCount === 0) {
+		document.body.style.overflow = savedBodyOverflow;
+		savedBodyOverflow = '';
+	}
+}
+
 function clamp(value, min, max) {
 	return Math.min(max, Math.max(min, value));
 }
@@ -167,10 +187,13 @@ function lerpShadow(fromShadow, toShadow, p) {
  * geometry so it inherits the spring's settle bounce — on the way in.
  *
  * show() morphs source → target; hide() morphs back. Calling either mid-flight
- * reverses the spring in place. Emits: show, hide, change, shown, hidden, stop.
+ * reverses the spring in place. Emits: show, hide, change, shown, hidden, stop,
+ * complete.
  */
 export class MorphEngine extends EventEmitter {
 	#spring;
+	#attraction;
+	#friction;
 	#frames = null;
 	#blob = null;
 	#cloneWrapper = null;
@@ -180,6 +203,7 @@ export class MorphEngine extends EventEmitter {
 	#state = 'idle';
 	#p = 0;
 	#resolveRun = null;
+	#pendingComplete = null;
 
 	// logical pair for the current show → hide lifecycle
 	#sourceElement = null;
@@ -188,7 +212,7 @@ export class MorphEngine extends EventEmitter {
 	#heldSource = null;
 	#displayOverride = null;
 	#savedInline = new Map();
-	#savedBodyOverflow = null;
+	#holdsScrollLock = false;
 
 	// current keyframe mapping (roles swap between show and hide)
 	#fromMeasure = null;
@@ -200,6 +224,7 @@ export class MorphEngine extends EventEmitter {
 	#revealFull = 0.875; // p where the target is fully opaque and the blob starts fading
 	#sourceRevealed = false;
 	#sourceRevealUntil = 0.25; // p where the source reveal window ends (mirrors revealStart at p→0)
+	#cloneFadeUntil = 0.25; // per-flight snapshot of the source-content clone fade window
 
 	// early-settle detector — reset at every animateTo (see #armSettle)
 	#springTarget = TRAVEL; // spring position this run is heading toward
@@ -218,6 +243,13 @@ export class MorphEngine extends EventEmitter {
 	 * @param {number} [options.cloneFadeUntil=0.25] - Progress where the source-content clone
 	 *   finishes dissolving
 	 * @param {boolean} [options.cloneContents=true] - Clone the source's content into the blob
+	 * @param {Object} [options.hide] - Sparse overrides for the hide leg
+	 * @param {number} [options.hide.attraction] - Hide spring attraction
+	 * @param {number} [options.hide.friction] - Hide spring friction
+	 * @param {number} [options.hide.revealAt] - Hide target reveal start
+	 * @param {number} [options.hide.sourceRevealUntil] - Hide source reveal end
+	 * @param {number} [options.hide.cloneFadeUntil] - Hide clone fade end
+	 * @param {boolean} [options.hide.cloneContents] - Hide clone-content setting
 	 * @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	 *   hidden — a scroll mid-morph would strand the fixed-position blob
 	 * @param {number} [options.zIndex=9999] - Blob z-index
@@ -230,11 +262,14 @@ export class MorphEngine extends EventEmitter {
 		sourceRevealUntil = 0.25,
 		cloneFadeUntil = 0.25,
 		cloneContents = true,
+		hide = {},
 		lockScroll = true,
 		zIndex = 9999,
 	} = {}) {
 		super();
 
+		this.#attraction = attraction;
+		this.#friction = friction;
 		this.#spring = new PhysicsEngine({ attraction, friction });
 		this.#styleProperties = styleProperties;
 
@@ -242,6 +277,7 @@ export class MorphEngine extends EventEmitter {
 		this.sourceRevealUntil = sourceRevealUntil;
 		this.cloneFadeUntil = cloneFadeUntil;
 		this.cloneContents = cloneContents;
+		this.hideConfig = hide;
 		this.lockScroll = lockScroll;
 		this.zIndex = zIndex;
 
@@ -293,14 +329,44 @@ export class MorphEngine extends EventEmitter {
 	 * @param {HTMLElement} options.from - Source element (stays hidden while shown)
 	 * @param {HTMLElement} options.to - Target element (revealed as the blob arrives)
 	 * @param {string} [options.display] - display value applied to a display:none target
+	 * @param {boolean} [options.oneWay=false] - Complete and hand ownership to the target on settle
+	 * @param {number} [options.attraction] - One-off spring attraction
+	 * @param {number} [options.friction] - One-off spring friction
+	 * @param {number} [options.revealAt] - One-off target reveal start
+	 * @param {number} [options.sourceRevealUntil] - One-off source reveal end
+	 * @param {number} [options.cloneFadeUntil] - One-off clone fade end
+	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
-	show({ from, to, display = null } = {}) {
+	show({
+		from,
+		to,
+		display = null,
+		oneWay = false,
+		attraction,
+		friction,
+		revealAt,
+		sourceRevealUntil,
+		cloneFadeUntil,
+		cloneContents,
+	} = {}) {
+		const overrides = {
+			attraction,
+			friction,
+			revealAt,
+			sourceRevealUntil,
+			cloneFadeUntil,
+			cloneContents,
+		};
 		if (this.#state === 'showing' || this.#state === 'shown') {
 			console.warn(`MorphEngine: show() ignored — already ${this.#state}`);
 			return Promise.resolve(false);
 		}
-		if (this.#state === 'hiding') return this.#reverse('showing');
+		if (this.#state === 'hiding') {
+			const promise = this.#reverse('showing', overrides);
+			if (oneWay) this.#pendingComplete = { restoreSource: false };
+			return promise;
+		}
 
 		if (!from || !to) throw new Error('MorphEngine: show() requires { from, to } elements.');
 
@@ -315,28 +381,72 @@ export class MorphEngine extends EventEmitter {
 		this.#saveInline(from);
 		this.#saveInline(to);
 
-		if (this.lockScroll) {
-			this.#savedBodyOverflow = document.body.style.overflow;
-			document.body.style.overflow = 'hidden';
+		if (this.lockScroll && !this.#holdsScrollLock) {
+			this.#holdsScrollLock = true;
+			acquireScrollLock();
 		}
 
-		return this.#morph(from, to, 'showing');
+		const promise = this.#morph(from, to, 'showing', overrides);
+		if (oneWay) this.#pendingComplete = { restoreSource: false };
+		return promise;
 	}
 
 	/**
 	 * Morphs back from the target to the source. Called while showing, it
 	 * reverses the in-flight morph.
+	 * @param {Object} [options]
+	 * @param {number} [options.attraction] - One-off spring attraction
+	 * @param {number} [options.friction] - One-off spring friction
+	 * @param {number} [options.revealAt] - One-off target reveal start
+	 * @param {number} [options.sourceRevealUntil] - One-off source reveal end
+	 * @param {number} [options.cloneFadeUntil] - One-off clone fade end
+	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
-	hide() {
+	hide({
+		attraction,
+		friction,
+		revealAt,
+		sourceRevealUntil,
+		cloneFadeUntil,
+		cloneContents,
+	} = {}) {
+		const overrides = {
+			attraction,
+			friction,
+			revealAt,
+			sourceRevealUntil,
+			cloneFadeUntil,
+			cloneContents,
+		};
 		if (this.#state === 'idle' || this.#state === 'hiding') {
 			console.warn(`MorphEngine: hide() ignored — ${this.#state}`);
 			return Promise.resolve(false);
 		}
-		if (this.#state === 'showing') return this.#reverse('hiding');
+		if (this.#state === 'showing') return this.#reverse('hiding', overrides);
 
 		// fresh re-measure of both — the page may have scrolled or resized while shown
-		return this.#morph(this.#targetElement, this.#sourceElement, 'hiding');
+		return this.#morph(this.#targetElement, this.#sourceElement, 'hiding', overrides);
+	}
+
+	/**
+	 * Hands a shown or showing one-way morph to the target without emitting stop.
+	 * @param {Object} [options]
+	 * @param {boolean} [options.restoreSource=false] - Fully restore the source on handoff
+	 * @returns {boolean} True when completed immediately or armed for settle.
+	 */
+	complete({ restoreSource = false } = {}) {
+		if (this.#state === 'shown') {
+			this.#finalizeComplete(restoreSource);
+			return true;
+		}
+		if (this.#state === 'showing') {
+			this.#pendingComplete = { restoreSource };
+			return true;
+		}
+
+		console.warn(`MorphEngine: complete() ignored — ${this.#state}`);
+		return false;
 	}
 
 	/**
@@ -354,6 +464,7 @@ export class MorphEngine extends EventEmitter {
 	 * @param {boolean} [options.restoreSource=true] - Restore the source now.
 	 */
 	stop({ restoreSource = true } = {}) {
+		this.#pendingComplete = null;
 		if (this.#state === 'idle') return;
 
 		this.#supersede();
@@ -412,13 +523,15 @@ export class MorphEngine extends EventEmitter {
 		this.removeAllListeners();
 	}
 
-	/** @param {number} attraction - Spring attraction (0, 1) exclusive, live-tunable */
+	/** @param {number} attraction - Show/default attraction, applied live to the spring */
 	setAttraction(attraction) {
+		this.#attraction = attraction;
 		this.#spring.setAttraction(attraction);
 	}
 
-	/** @param {number} friction - Spring friction (0, 1) exclusive, live-tunable */
+	/** @param {number} friction - Show/default friction, applied live to the spring */
 	setFriction(friction) {
+		this.#friction = friction;
 		this.#spring.setFriction(friction);
 	}
 
@@ -430,8 +543,12 @@ export class MorphEngine extends EventEmitter {
 	 * cloned and frozen on top), springs to toElement's rect and styles, and
 	 * reveals toElement across the final stretch.
 	 */
-	#morph(fromElement, toElement, phase) {
+	#morph(fromElement, toElement, phase, overrides = {}) {
+		this.#pendingComplete = null;
 		this.#supersede();
+		const config = this.#resolveConfig(phase, overrides);
+		this.#spring.setAttraction(config.attraction);
+		this.#spring.setFriction(config.friction);
 
 		const fromMeasure = this.#measure(fromElement);
 		const toMeasure = this.#measure(toElement);
@@ -446,15 +563,16 @@ export class MorphEngine extends EventEmitter {
 
 		// target fades in across [revealStart, revealFull]; blob fades out across
 		// [revealFull, 1] — staggered so the surface never dips translucent mid-swap
-		this.#revealStart = this.revealAt;
-		this.#revealFull = this.revealAt + (1 - this.revealAt) / 2;
-		this.#sourceRevealUntil = this.sourceRevealUntil;
+		this.#revealStart = config.revealAt;
+		this.#revealFull = config.revealAt + (1 - config.revealAt) / 2;
+		this.#sourceRevealUntil = config.sourceRevealUntil;
+		this.#cloneFadeUntil = config.cloneFadeUntil;
 
 		this.#reconcileBorderColors(fromMeasure, toMeasure);
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
 
 		this.#removeBlob();
-		this.#createBlob(fromMeasure, toMeasure);
+		this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
 		this.#markElements(phase);
 
 		// transitions on the real elements would fight the per-frame writes
@@ -486,8 +604,12 @@ export class MorphEngine extends EventEmitter {
 	 * the reveal window un-reveals, the clone fades back in, and the blob lands
 	 * exactly where it started.
 	 */
-	#reverse(newPhase) {
+	#reverse(newPhase, overrides = {}) {
+		this.#pendingComplete = null;
 		this.#supersede();
+		const config = this.#resolveConfig(newPhase, overrides);
+		this.#spring.setAttraction(config.attraction);
+		this.#spring.setFriction(config.friction);
 		this.#state = newPhase;
 		this.#markElements(newPhase);
 
@@ -531,6 +653,12 @@ export class MorphEngine extends EventEmitter {
 
 		if (this.#state === 'showing') this.#finalizeShown();
 		else this.#finalizeHidden();
+
+		if (this.#state === 'shown' && this.#pendingComplete) {
+			const { restoreSource } = this.#pendingComplete;
+			this.#pendingComplete = null;
+			this.#finalizeComplete(restoreSource);
+		}
 
 		if (resolve) resolve(true);
 	}
@@ -585,10 +713,64 @@ export class MorphEngine extends EventEmitter {
 		this.emit('hidden', { from: source, to: target });
 	}
 
+	/**
+	 * Releases a shown morph to app ownership while preserving the target's state.
+	 * @param {boolean} restoreSource - Whether to fully restore the source element
+	 */
+	#finalizeComplete(restoreSource) {
+		const source = this.#sourceElement;
+		const target = this.#targetElement;
+
+		this.#savedInline.delete(target);
+		target.removeAttribute('morph-shown');
+
+		if (restoreSource) this.#restoreInline(source);
+		else {
+			this.#restoreProperties(source, ['transition']);
+			this.#savedInline.delete(source);
+		}
+
+		this.#unlockScroll();
+		this.#sourceElement = null;
+		this.#targetElement = null;
+		this.#displayOverride = null;
+		this.#state = 'idle';
+		this.#p = 0;
+		this.emit('complete', { from: source, to: target });
+	}
+
+	/** Releases this engine's share of the module-level body scroll lock. */
 	#unlockScroll() {
-		if (this.#savedBodyOverflow === null) return;
-		document.body.style.overflow = this.#savedBodyOverflow;
-		this.#savedBodyOverflow = null;
+		if (!this.#holdsScrollLock) return;
+		this.#holdsScrollLock = false;
+		releaseScrollLock();
+	}
+
+	/**
+	 * Resolves sparse public, hide-leg, and per-call settings for a run.
+	 * @param {string} phase - 'showing' or 'hiding'
+	 * @param {Object} overrides - Sparse per-call overrides
+	 * @returns {Object} Resolved spring and choreography settings
+	 */
+	#resolveConfig(phase, overrides = {}) {
+		const config = {
+			attraction: this.#attraction,
+			friction: this.#friction,
+			revealAt: this.revealAt,
+			sourceRevealUntil: this.sourceRevealUntil,
+			cloneFadeUntil: this.cloneFadeUntil,
+			cloneContents: this.cloneContents,
+		};
+		const keys = Object.keys(config);
+		if (phase === 'hiding') {
+			for (const key of keys) {
+				if (this.hideConfig[key] !== undefined) config[key] = this.hideConfig[key];
+			}
+		}
+		for (const key of keys) {
+			if (overrides[key] !== undefined) config[key] = overrides[key];
+		}
+		return config;
 	}
 
 	/** Resolves a superseded run's promise with false. */
@@ -618,7 +800,11 @@ export class MorphEngine extends EventEmitter {
 
 		if (this.#cloneWrapper) {
 			const fade =
-				this.cloneFadeUntil > 0 ? clamp(1 - p / this.cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
+				this.#cloneFadeUntil > 0
+					? clamp(1 - p / this.#cloneFadeUntil, 0, 1)
+					: p <= 0
+						? 1
+						: 0;
 			this.#cloneWrapper.style.opacity = String(fade);
 		}
 
@@ -851,7 +1037,7 @@ export class MorphEngine extends EventEmitter {
 		};
 	}
 
-	#createBlob(fromMeasure, toMeasure) {
+	#createBlob(fromMeasure, toMeasure, cloneContents) {
 		const blob = document.createElement('morph-blob');
 		const borderStyle =
 			toMeasure.borderStyle !== 'none'
@@ -902,7 +1088,7 @@ export class MorphEngine extends EventEmitter {
 			blob.style.backgroundPosition = backgroundMeasure.backgroundPosition;
 		}
 
-		if (this.cloneContents) this.#createClone(blob, fromMeasure);
+		if (cloneContents) this.#createClone(blob, fromMeasure);
 
 		document.body.appendChild(blob);
 		this.#blob = blob;

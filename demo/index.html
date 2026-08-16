@@ -752,6 +752,128 @@
 				color: var(--cream-dim);
 			}
 
+			.toggle-row {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+				font-size: 0.78rem;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: var(--cream-dim);
+				cursor: pointer;
+			}
+
+			.toggle-row input {
+				accent-color: var(--violet);
+			}
+
+			.slider-row input:disabled {
+				opacity: 0.3;
+				cursor: not-allowed;
+			}
+
+			/* ---- One-way flights / stage ---- */
+			.stage-controls {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.7rem;
+				margin-bottom: 1.2rem;
+			}
+
+			.stage-grid {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 0.8rem;
+				margin-bottom: 1rem;
+			}
+
+			.stage-grid-label {
+				grid-column: 1 / -1;
+				font-size: 0.65rem;
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--text-dim);
+			}
+
+			.album-tile,
+			.album-arrival,
+			.album-slot {
+				min-height: 6rem;
+				border-radius: 0.8rem;
+			}
+
+			.album-tile,
+			.album-arrival {
+				display: flex;
+				align-items: flex-end;
+				padding: 0.8rem;
+				font: inherit;
+				font-size: 0.75rem;
+				color: white;
+				border: 1px solid rgba(255, 255, 255, 0.14);
+				box-shadow: 0 8px 24px rgba(3, 2, 8, 0.28);
+			}
+
+			.album-tile {
+				cursor: pointer;
+			}
+
+			.album-slot {
+				position: relative;
+				border: 1px dashed var(--border-accent);
+				background: rgba(167, 139, 250, 0.025);
+			}
+
+			.album-arrival {
+				position: absolute;
+				inset: 0;
+				visibility: hidden;
+			}
+
+			.album-gradient-1 {
+				background: linear-gradient(135deg, #734b9b, #d14c7b);
+			}
+
+			.album-gradient-2 {
+				background: linear-gradient(135deg, #315f73, #55b5a4);
+			}
+
+			.album-gradient-3 {
+				background: linear-gradient(135deg, #8b552e, #dfa847);
+			}
+
+			.album-gradient-4 {
+				background: linear-gradient(135deg, #3b3f8f, #8a72d8);
+			}
+
+			.album-gradient-5 {
+				background: linear-gradient(135deg, #7d354b, #d17468);
+			}
+
+			.album-gradient-6 {
+				background: linear-gradient(135deg, #285641, #70a35b);
+			}
+
+			.manual-stage {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+				align-items: center;
+				gap: 1rem;
+				margin-top: 1.5rem;
+				padding-top: 1.5rem;
+				border-top: 1px solid var(--border);
+			}
+
+			@media (max-width: 600px) {
+				.stage-grid {
+					grid-template-columns: repeat(2, minmax(0, 1fr));
+				}
+
+				.manual-stage {
+					grid-template-columns: 1fr;
+				}
+			}
+
 			/* ---- Code blocks ---- */
 			.code-card {
 				background: #0c0a12;
@@ -842,7 +964,7 @@
 
 		<main>
 			<section class="section">
-				<div class="section-label">01 · Container transform</div>
+				<div class="section-label">Container transform</div>
 				<h2 class="section-title">Task board</h2>
 				<p class="section-note">
 					Click a task — the details panel grows out of the card.
@@ -937,7 +1059,7 @@
 			</section>
 
 			<section class="section">
-				<div class="section-label">02 · Small geometry</div>
+				<div class="section-label">Small geometry</div>
 				<h2 class="section-title">Dropdown</h2>
 				<p class="section-note">
 					Same engine, second instance, snappier spring — the trigger grows into its options panel
@@ -963,7 +1085,7 @@
 			</section>
 
 			<section class="section">
-				<div class="section-label">03 · Real &lt;dialog&gt;</div>
+				<div class="section-label">Real &lt;dialog&gt;</div>
 				<h2 class="section-title">Modal handoff</h2>
 				<p class="section-note">
 					This one lands in a real <b>&lt;dialog&gt;</b>. The flight happens in normal flow while
@@ -987,7 +1109,7 @@
 			</section>
 
 			<section class="section">
-				<div class="section-label">04 · Extreme geometry</div>
+				<div class="section-label">Extreme geometry</div>
 				<h2 class="section-title">Confirmation dialog</h2>
 				<p class="section-note">
 					A ~9rem pill blows all the way up into a modal — <b>border-radius 100px → 1.25rem</b>, the
@@ -1002,14 +1124,19 @@
 			</section>
 
 			<section class="section">
-				<div class="section-label">05 · Parameter lab</div>
+				<div class="section-label">Parameter lab</div>
 				<h2 class="section-title">Tune the feel</h2>
 				<p class="section-note">
 					Attraction and friction apply <b>live, mid-flight</b>. The reveal point takes effect on
-					the next morph.
+					the next morph. Enable asymmetric hide settings for a faster, more damped return;
+					they also take over when a show reverses mid-flight.
 				</p>
 
 				<div class="lab">
+					<label class="toggle-row">
+						<input type="checkbox" id="lab-asymmetric" checked />
+						Asymmetric hide
+					</label>
 					<div class="slider-row">
 						<span class="slider-label">Attraction</span>
 						<input type="range" id="lab-attraction" min="5" max="250" value="100" step="1" />
@@ -1019,6 +1146,16 @@
 						<span class="slider-label">Friction</span>
 						<input type="range" id="lab-friction" min="5" max="60" value="32" step="1" />
 						<span class="slider-value" id="lab-friction-value">0.32</span>
+					</div>
+					<div class="slider-row">
+						<span class="slider-label">Hide attraction</span>
+						<input type="range" id="lab-hide-attraction" min="5" max="300" value="180" step="1" />
+						<span class="slider-value" id="lab-hide-attraction-value">0.180</span>
+					</div>
+					<div class="slider-row">
+						<span class="slider-label">Hide friction</span>
+						<input type="range" id="lab-hide-friction" min="5" max="80" value="50" step="1" />
+						<span class="slider-value" id="lab-hide-friction-value">0.50</span>
 					</div>
 					<div class="slider-row">
 						<span class="slider-label">Reveal at</span>
@@ -1039,7 +1176,79 @@
 			</section>
 
 			<section class="section">
-				<div class="section-label">06 · Setup</div>
+				<div class="section-label">Group flights / the stage</div>
+				<h2 class="section-title">Move an album as a group</h2>
+				<p class="section-note">
+					Six independent engines launch through <b>MorphGroup</b>, staggered 60ms apart — the
+					tiles fly up from the bottom shelf into the empty slots. Reset flies them home with a
+					<b>negative stagger</b>, so the group returns in the opposite order. The manual flight
+					below shows <b>complete()</b>: a one-way morph the engine permanently hands to its
+					target.
+				</p>
+
+				<div class="stage-controls">
+					<button class="btn btn-primary" id="stage-move">Move all</button>
+					<button class="btn btn-ghost" id="stage-reset">Reset</button>
+				</div>
+
+				<div class="stage-grid">
+					<div class="stage-grid-label">Album B · destinations</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-1" data-stage-target>01 · Afterglow</div>
+					</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-2" data-stage-target>02 · Estuary</div>
+					</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-3" data-stage-target>03 · Solstice</div>
+					</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-4" data-stage-target>04 · Blue hour</div>
+					</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-5" data-stage-target>05 · Ember</div>
+					</div>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-6" data-stage-target>06 · Canopy</div>
+					</div>
+				</div>
+
+				<div class="stage-grid">
+					<div class="stage-grid-label">Album A · sources</div>
+					<button class="album-tile album-gradient-1" data-stage-source>01 · Afterglow</button>
+					<button class="album-tile album-gradient-2" data-stage-source>02 · Estuary</button>
+					<button class="album-tile album-gradient-3" data-stage-source>03 · Solstice</button>
+					<button class="album-tile album-gradient-4" data-stage-source>04 · Blue hour</button>
+					<button class="album-tile album-gradient-5" data-stage-source>05 · Ember</button>
+					<button class="album-tile album-gradient-6" data-stage-source>06 · Canopy</button>
+				</div>
+
+				<div class="readout">
+					<div class="readout-item">
+						<span class="readout-key">Group state</span>
+						<span class="readout-val" id="stage-state">idle</span>
+					</div>
+					<div class="readout-item">
+						<span class="readout-key">Live engines</span>
+						<span class="readout-val" id="stage-live-engines">0</span>
+					</div>
+					<div class="readout-item">
+						<span class="readout-key">Complete count</span>
+						<span class="readout-val" id="stage-complete-count">0</span>
+					</div>
+				</div>
+
+				<div class="manual-stage">
+					<button class="album-tile album-gradient-4" id="manual-source">Manual flight</button>
+					<button class="btn btn-primary" id="manual-complete">Make permanent</button>
+					<div class="album-slot">
+						<div class="album-arrival album-gradient-4" id="manual-target">Permanent panel</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section-label">Setup</div>
 				<h2 class="section-title">Wire it up</h2>
 				<p class="section-note">
 					Three steps: install, give the target its resting rules, point the engine at a pair of
@@ -1195,9 +1404,9 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			</div>
 		</dialog>
 
-		<script src="./dist/morph-engine.js?v=4"></script>
+		<script src="./dist/morph-engine.js?v=6"></script>
 		<script>
-			const { MorphEngine } = window.MorphEngine;
+			const { MorphEngine, MorphGroup } = window.MorphEngine;
 
 			// ---- Task board morph ----
 			const taskMorph = new MorphEngine({ zIndex: 990 });
@@ -1434,6 +1643,9 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			const attractionSlider = document.getElementById('lab-attraction');
 			const frictionSlider = document.getElementById('lab-friction');
 			const revealSlider = document.getElementById('lab-reveal');
+			const asymmetricToggle = document.getElementById('lab-asymmetric');
+			const hideAttractionSlider = document.getElementById('lab-hide-attraction');
+			const hideFrictionSlider = document.getElementById('lab-hide-friction');
 
 			attractionSlider.addEventListener('input', () => {
 				const value = attractionSlider.value / 1000;
@@ -1452,6 +1664,29 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 				engines.forEach((engine) => (engine.revealAt = value));
 				document.getElementById('lab-reveal-value').textContent = value.toFixed(2);
 			});
+
+			function applyHideConfig() {
+				const attraction = hideAttractionSlider.value / 1000;
+				const friction = hideFrictionSlider.value / 100;
+				hideAttractionSlider.disabled = !asymmetricToggle.checked;
+				hideFrictionSlider.disabled = !asymmetricToggle.checked;
+				engines.forEach((engine) => {
+					engine.hideConfig = asymmetricToggle.checked ? { attraction, friction } : {};
+				});
+			}
+
+			asymmetricToggle.addEventListener('change', applyHideConfig);
+			hideAttractionSlider.addEventListener('input', () => {
+				const value = hideAttractionSlider.value / 1000;
+				document.getElementById('lab-hide-attraction-value').textContent = value.toFixed(3);
+				applyHideConfig();
+			});
+			hideFrictionSlider.addEventListener('input', () => {
+				const value = hideFrictionSlider.value / 100;
+				document.getElementById('lab-hide-friction-value').textContent = value.toFixed(2);
+				applyHideConfig();
+			});
+			applyHideConfig();
 
 			// ---- Readout ----
 			const stateReadout = document.getElementById('readout-state');
@@ -1472,6 +1707,120 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			wireReadout(dropdownMorph, 'dropdown');
 			wireReadout(dialogMorph, 'dialog');
 			wireReadout(confirmMorph, 'confirm');
+
+			// ---- Group flights / MorphGroup ----
+			// lockScroll off: the moved album parks in the 'shown' state until Reset,
+			// and an inline demo section must not hold the page's scroll hostage
+			const stageGroup = new MorphGroup({ zIndex: 995, lockScroll: false });
+			const stageSources = [...document.querySelectorAll('[data-stage-source]')];
+			const stageTargets = [...document.querySelectorAll('[data-stage-target]')];
+			const stageMoveButton = document.getElementById('stage-move');
+			const stageResetButton = document.getElementById('stage-reset');
+			const stageState = document.getElementById('stage-state');
+			const stageLiveEngines = document.getElementById('stage-live-engines');
+			const stageCompleteReadout = document.getElementById('stage-complete-count');
+			const wiredStageEngines = new Set();
+			let stageCompleteCount = 0;
+			let stageReadoutFrame = null;
+
+			const manualMorph = new MorphEngine({ zIndex: 995, lockScroll: false });
+			const manualSource = document.getElementById('manual-source');
+			const manualTarget = document.getElementById('manual-target');
+			const manualCompleteButton = document.getElementById('manual-complete');
+
+			function renderStageReadout() {
+				stageState.textContent = stageGroup.state;
+				const live = [...stageGroup.engines, manualMorph].filter(
+					(engine) => engine.state !== 'idle'
+				).length;
+				stageLiveEngines.textContent = String(live);
+				stageCompleteReadout.textContent = String(stageCompleteCount);
+			}
+
+			function watchStageReadout() {
+				if (stageReadoutFrame !== null) return;
+				const update = () => {
+					renderStageReadout();
+					if (stageGroup.state !== 'idle' || manualMorph.state !== 'idle') {
+						stageReadoutFrame = requestAnimationFrame(update);
+					} else {
+						stageReadoutFrame = null;
+					}
+				};
+				update();
+			}
+
+			stageMoveButton.addEventListener('click', async () => {
+				if (stageGroup.state !== 'idle' || stageMoveButton.disabled) return;
+				stageMoveButton.disabled = true;
+				const pairs = stageSources.map((from, index) => ({ from, to: stageTargets[index] }));
+				const run = stageGroup.show(pairs, { stagger: 60 });
+
+				stageGroup.engines.forEach((engine) => {
+					if (wiredStageEngines.has(engine)) return;
+					wiredStageEngines.add(engine);
+					engine.on('complete', () => {
+						stageCompleteCount++;
+						renderStageReadout();
+					});
+				});
+
+				watchStageReadout();
+				if (!(await run)) stageMoveButton.disabled = false;
+				renderStageReadout();
+			});
+
+			manualSource.addEventListener('click', () => {
+				if (manualMorph.state !== 'idle') return;
+				manualMorph.show({ from: manualSource, to: manualTarget });
+				watchStageReadout();
+			});
+
+			manualCompleteButton.addEventListener('click', () => {
+				if (manualMorph.complete()) manualCompleteButton.disabled = true;
+				watchStageReadout();
+			});
+
+			function clearMorphOwnership(element) {
+				[
+					'visibility',
+					'display',
+					'opacity',
+					'transform',
+					'transform-origin',
+					'will-change',
+					'transition',
+				].forEach((property) => element.style.removeProperty(property));
+				element.removeAttribute('morphing');
+				element.removeAttribute('morph-shown');
+			}
+
+			stageResetButton.addEventListener('click', async () => {
+				if (stageGroup.state === 'hiding') return;
+				// live group flights fly home last-tile-first; only completed or
+				// manual residue needs the instant app-side cleanup
+				const flyingHome =
+					stageGroup.state !== 'idle' ? stageGroup.hide({ stagger: -60 }) : null;
+				manualMorph.stop();
+				watchStageReadout();
+				if (flyingHome) await flyingHome;
+				[...stageSources, ...stageTargets, manualSource, manualTarget].forEach(
+					clearMorphOwnership
+				);
+				stageCompleteCount = 0;
+				stageMoveButton.disabled = false;
+				manualCompleteButton.disabled = false;
+				renderStageReadout();
+			});
+
+			stageGroup.on('shown', renderStageReadout);
+			stageGroup.on('hidden', renderStageReadout);
+			stageGroup.on('complete', renderStageReadout);
+			manualMorph.on('complete', () => {
+				stageCompleteCount++;
+				renderStageReadout();
+			});
+			renderStageReadout();
 		</script>
 	</body>
 </html>

@@ -55,27 +55,94 @@ new MorphEngine({
 });
 ```
 
-`hide` accepts sparse overrides for `attraction`, `friction`, `revealAt`,
-`sourceRevealUntil`, `cloneFadeUntil`, and `cloneContents`. The same keys can be passed to
-`show()` or `hide()` for a one-off flight. Precedence is per-call override → hide bag (hide leg
-only) → top-level/public field. Undefined values never override, so live mutations such as
-`morph.cloneContents = false` keep flowing through.
+## Animating in and out differently
 
-`setAttraction()` and `setFriction()` apply live to the current spring and update the show/default
-settings used by future flights. A reversal immediately retunes the spring for its new direction;
-the interrupted flight keeps its original reveal and clone choreography.
+The show leg and the hide leg are the same routine with the roles swapped, but they don't have to
+feel the same. Six settings are **directional** — they can be set once for both legs, overridden
+for the hide leg, or overridden per call:
+
+| Key                 | Effect                                                            |
+| ------------------- | ----------------------------------------------------------------- |
+| `attraction`        | Spring attraction, (0, 1) exclusive — higher = faster             |
+| `friction`          | Spring friction, (0, 1) exclusive — lower = bouncier              |
+| `revealAt`          | Progress where the destination's reveal window begins             |
+| `sourceRevealUntil` | Progress where the origin's reveal window ends                    |
+| `cloneFadeUntil`    | Progress where the origin-content clone finishes dissolving       |
+| `cloneContents`     | Whether the origin's content is cloned into the blob at all       |
+
+Three places to set them, resolved per run in this order (later wins, `undefined` never overrides):
+
+```js
+const morph = new MorphEngine({
+	// 1. base — used by both legs
+	attraction: 0.1,
+	friction: 0.32,
+
+	// 2. hide bag — sparse, overlays the base on the hide leg only
+	hide: {
+		attraction: 0.18, // snap home faster than it opened
+		friction: 0.5,    // and land without the bounce
+		revealAt: 0.6     // show the card again earlier on the way back
+	}
+});
+
+// 3. per-call — one-off, wins over both
+await morph.show({ from: card, to: panel, attraction: 0.06 }); // this one drifts open
+await morph.hide({ friction: 0.8 });                          // this one lands dead
+```
+
+A common shape: a soft, slightly overshooting open and a quick, damped close.
+
+```js
+new MorphEngine({
+	attraction: 0.08,
+	friction: 0.28,
+	hide: { attraction: 0.2, friction: 0.55 }
+});
+```
+
+Both bags are sparse — `hide: { attraction: 0.18 }` inherits the base `friction`, reveal windows
+and clone settings untouched.
+
+### Changing values later
+
+`hideConfig` is a public field, so the hide leg can be retuned at any time:
+
+```js
+morph.hideConfig.attraction = 0.25;   // future hides only
+morph.hideConfig = {};                // hide now matches show again
+```
+
+`setAttraction()` / `setFriction()` apply live to the running spring **and** update the
+show/default dial used by future flights. They do not touch `hideConfig` — a hide-leg override
+still wins on the way back. The plain choreography fields (`revealAt`, `sourceRevealUntil`,
+`cloneFadeUntil`, `cloneContents`) are public properties too, and are read fresh at the start of
+each run:
+
+```js
+morph.setAttraction(0.15);    // show/default dial + the live spring
+morph.cloneContents = false;  // from the next flight on
+```
+
+### Reversals
+
+Calling `hide()` mid-show retunes the spring to the hide dials immediately, from wherever the
+spring is — so an interrupted open still closes with the hide feel. The interrupted flight keeps
+its original reveal and clone choreography, because those windows are anchored to the keyframes
+already in flight; only the spring dials change direction.
 
 ## API
 
 | Member                                              | Description                                                                                                                                                                                                                                                                                                           |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`.                                                                                                                              |
-| `hide({ ...overrides }?)`                           | Morph back (remembers the pair, re-measures both). Same promise semantics; no-argument `hide()` remains supported.                                                                                                                                                                                                    |
+| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`. `...overrides` accepts any of the six directional keys.                                                                       |
+| `hide({ ...overrides }?)`                           | Morph back (remembers the pair, re-measures both). Same promise semantics and the same one-off overrides; no-argument `hide()` remains supported.                                                                                                                                                                     |
 | `complete({ restoreSource? })`                      | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.             |
 | `stop({ restoreSource? })`                          | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
 | `restoreSource()`                                   | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
 | `destroy()`                                         | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
-| `setAttraction(n)` / `setFriction(n)`               | Live spring tuning that also updates the show/default setting.                                                                                                                                                                                                                                                        |
+| `setAttraction(n)` / `setFriction(n)`               | Live spring tuning that also updates the show/default setting. Does not touch `hideConfig`.                                                                                                                                                                                                                           |
+| `hideConfig`                                        | Mutable sparse bag of hide-leg overrides (the constructor's `hide` option).                                                                                                                                                                                                                                           |
 | `state`                                             | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
 | `progress`                                          | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
 
@@ -110,6 +177,11 @@ that are still waiting in the stagger window. Both `show()` and `hide()` take `s
 first), same convention as timeline-engine, so a group can fly home in the opposite order it
 arrived: `group.hide({ stagger: -60 })`.
 
+The constructor options — including the `hide` bag — go to every pooled engine, and any
+directional key left over on `show()`/`hide()` after `stagger`, `oneWay` and `display` are peeled
+off is forwarded as a per-call override to each engine, so a group animates in and out with
+different spring feels the same way a single engine does.
+
 ```js
 import { MorphGroup } from '@magic-spells/morph-engine';
 
@@ -124,7 +196,7 @@ const pairs = cards.map((from, index) => ({
 	display: 'grid'
 }));
 
-await group.show(pairs, { stagger: 40, oneWay: true });
+await group.show(pairs, { stagger: 40, oneWay: true, attraction: 0.09 });
 
 group.engines;                    // inspect the pooled engines
 await group.hide({ stagger: -40 }); // fly home in reverse order

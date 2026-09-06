@@ -168,7 +168,11 @@ await morph.show({
 ```
 
 `handoff: 'hard'` sets the destination's opacity ramp to zero width and replaces the blob's fade
-with a step, both at `revealAt`.
+with a step, both at `revealAt`. The switch point is clamped strictly inside `(0, 1)`, so
+`revealAt: 0` and `revealAt: 1` land a hair inside the flight rather than colliding with its end
+keyframes.
+
+An unrecognized `cloneFit` or `handoff` value warns and falls back to the default.
 
 ### Reversals
 

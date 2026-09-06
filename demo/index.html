@@ -1665,6 +1665,8 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 				}
 			});
 			photoFull.addEventListener('click', closePhoto);
+			// the scrim is shared with the task panel, so route its clicks here too
+			backdrop.addEventListener('click', closePhoto);
 
 			document.querySelectorAll('.photo-mode').forEach((button) => {
 				button.addEventListener('click', () => {

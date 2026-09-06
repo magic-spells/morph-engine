@@ -82,6 +82,33 @@ function releaseScrollLock() {
 	}
 }
 
+const CLONE_FIT_VALUES = ['freeze', 'scale'];
+const HANDOFF_VALUES = ['fade', 'hard'];
+
+// A hard handoff's switch point is pinned strictly inside (0, 1): its two sparse
+// opacity keys are switch*100 and switch*100 + 0.01, and both must stay clear of
+// the 0 and 100 geometry keyframes.
+const HARD_SWITCH_MIN = 0.0001;
+const HARD_SWITCH_MAX = 0.9998;
+
+/**
+ * Falls back to a default for an unrecognized enum value, warning once per run so
+ * a typo surfaces instead of silently animating with the default choreography.
+ * @param {string} key - Option name, for the warning
+ * @param {*} value - Resolved value
+ * @param {string[]} allowed - Accepted values
+ * @param {string} fallback - Value used when `value` is not accepted
+ * @returns {string} `value` when accepted, else `fallback`
+ */
+function coerceEnum(key, value, allowed, fallback) {
+	if (allowed.includes(value)) return value;
+	console.warn(
+		`MorphEngine: unknown ${key} "${value}" — falling back to "${fallback}" ` +
+			`(expected ${allowed.map((v) => `"${v}"`).join(' or ')}).`
+	);
+	return fallback;
+}
+
 function clamp(value, min, max) {
 	return Math.min(max, Math.max(min, value));
 }
@@ -250,7 +277,7 @@ export class MorphEngine extends EventEmitter {
 	 *   'scale' scales it with the blob's border box, for photo-style continuous morphs
 	 * @param {'fade'|'hard'} [options.handoff='fade'] - How the blob hands off to the target.
 	 *   'fade' ramps the target in and then fades the blob out; 'hard' swaps both in one
-	 *   instant at revealAt
+	 *   instant at revealAt (the switch point is clamped strictly inside (0, 1))
 	 * @param {Object} [options.hide] - Sparse overrides for the hide leg
 	 * @param {number} [options.hide.attraction] - Hide spring attraction
 	 * @param {number} [options.hide.friction] - Hide spring friction
@@ -595,8 +622,13 @@ export class MorphEngine extends EventEmitter {
 		this.#cloneFadeUntil = config.cloneFadeUntil;
 		this.#cloneFit = config.cloneFit;
 		this.#handoff = config.handoff;
-		// a hard handoff collapses both ramps into one instant at revealAt
-		if (config.handoff === 'hard') this.#revealFull = config.revealAt;
+		// A hard handoff collapses both ramps into one instant at revealAt. The switch
+		// point is clamped strictly inside (0, 1) so both of its sparse opacity keys land
+		// inside (0, 100) and can never collide with the 0/100 geometry keyframes — at
+		// revealAt 0 the step would otherwise land on key 0, and at 1 on key 100.
+		if (config.handoff === 'hard') {
+			this.#revealFull = clamp(config.revealAt, HARD_SWITCH_MIN, HARD_SWITCH_MAX);
+		}
 
 		this.#reconcileBorderColors(fromMeasure, toMeasure);
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
@@ -802,6 +834,8 @@ export class MorphEngine extends EventEmitter {
 		for (const key of keys) {
 			if (overrides[key] !== undefined) config[key] = overrides[key];
 		}
+		config.cloneFit = coerceEnum('cloneFit', config.cloneFit, CLONE_FIT_VALUES, 'freeze');
+		config.handoff = coerceEnum('handoff', config.handoff, HANDOFF_VALUES, 'fade');
 		return config;
 	}
 
@@ -1078,12 +1112,19 @@ export class MorphEngine extends EventEmitter {
 				? this.#revealFull + 0.0001
 				: this.#revealFull + (1 - this.#revealFull) / 2;
 
-		return {
+		// Merge the sparse opacity keys in rather than listing them between the 0/100
+		// literals: a key that coincides with an end keyframe (revealAt at the very edge
+		// of a fade-mode window) must gain opacity, never replace that end's geometry.
+		const frames = {
 			0: { ...rectStyles(fromMeasure.rect), ...fromMeasure.styles },
-			[this.#revealFull * 100]: { opacity: '1' },
-			[blobClear * 100]: { opacity: '0' },
 			100: { ...rectStyles(toMeasure.rect), ...toMeasure.styles },
 		};
+		const setOpacity = (percent, value) => {
+			frames[percent] = { ...frames[percent], opacity: value };
+		};
+		setOpacity(this.#revealFull * 100, '1');
+		setOpacity(blobClear * 100, '0');
+		return frames;
 	}
 
 	#createBlob(fromMeasure, toMeasure, cloneContents) {

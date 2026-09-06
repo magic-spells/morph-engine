@@ -252,6 +252,8 @@ var MorphEngine = class extends EventEmitter {
 	#sourceRevealed = false;
 	#sourceRevealUntil = .25;
 	#cloneFadeUntil = .25;
+	#cloneFit = "freeze";
+	#handoff = "fade";
 	#springTarget = TRAVEL;
 	#lastPosition = 0;
 	#settleCount = 0;
@@ -267,6 +269,12 @@ var MorphEngine = class extends EventEmitter {
 	* @param {number} [options.cloneFadeUntil=0.25] - Progress where the source-content clone
 	*   finishes dissolving
 	* @param {boolean} [options.cloneContents=true] - Clone the source's content into the blob
+	* @param {'freeze'|'scale'} [options.cloneFit='freeze'] - How the frozen clone is sized as the
+	*   blob resizes. 'freeze' keeps it at the source's pixel size (text never rewraps);
+	*   'scale' scales it with the blob's border box, for photo-style continuous morphs
+	* @param {'fade'|'hard'} [options.handoff='fade'] - How the blob hands off to the target.
+	*   'fade' ramps the target in and then fades the blob out; 'hard' swaps both in one
+	*   instant at revealAt
 	* @param {Object} [options.hide] - Sparse overrides for the hide leg
 	* @param {number} [options.hide.attraction] - Hide spring attraction
 	* @param {number} [options.hide.friction] - Hide spring friction
@@ -274,11 +282,13 @@ var MorphEngine = class extends EventEmitter {
 	* @param {number} [options.hide.sourceRevealUntil] - Hide source reveal end
 	* @param {number} [options.hide.cloneFadeUntil] - Hide clone fade end
 	* @param {boolean} [options.hide.cloneContents] - Hide clone-content setting
+	* @param {'freeze'|'scale'} [options.hide.cloneFit] - Hide clone sizing mode
+	* @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 	* @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	*   hidden — a scroll mid-morph would strand the fixed-position blob
 	* @param {number} [options.zIndex=9999] - Blob z-index
 	*/
-	constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, hide = {}, lockScroll = true, zIndex = 9999 } = {}) {
+	constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, cloneFit = "freeze", handoff = "fade", hide = {}, lockScroll = true, zIndex = 9999 } = {}) {
 		super();
 		this.#attraction = attraction;
 		this.#friction = friction;
@@ -291,6 +301,8 @@ var MorphEngine = class extends EventEmitter {
 		this.sourceRevealUntil = sourceRevealUntil;
 		this.cloneFadeUntil = cloneFadeUntil;
 		this.cloneContents = cloneContents;
+		this.cloneFit = cloneFit;
+		this.handoff = handoff;
 		this.hideConfig = hide;
 		this.lockScroll = lockScroll;
 		this.zIndex = zIndex;
@@ -337,16 +349,20 @@ var MorphEngine = class extends EventEmitter {
 	* @param {number} [options.sourceRevealUntil] - One-off source reveal end
 	* @param {number} [options.cloneFadeUntil] - One-off clone fade end
 	* @param {boolean} [options.cloneContents] - One-off clone-content setting
+	* @param {'freeze'|'scale'} [options.cloneFit] - One-off clone sizing mode
+	* @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
 	* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	*/
-	show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents } = {}) {
+	show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff } = {}) {
 		const overrides = {
 			attraction,
 			friction,
 			revealAt,
 			sourceRevealUntil,
 			cloneFadeUntil,
-			cloneContents
+			cloneContents,
+			cloneFit,
+			handoff
 		};
 		if (this.#state === "showing" || this.#state === "shown") {
 			console.warn(`MorphEngine: show() ignored — already ${this.#state}`);
@@ -382,16 +398,20 @@ var MorphEngine = class extends EventEmitter {
 	* @param {number} [options.sourceRevealUntil] - One-off source reveal end
 	* @param {number} [options.cloneFadeUntil] - One-off clone fade end
 	* @param {boolean} [options.cloneContents] - One-off clone-content setting
+	* @param {'freeze'|'scale'} [options.cloneFit] - One-off clone sizing mode
+	* @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
 	* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	*/
-	hide({ attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents } = {}) {
+	hide({ attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff } = {}) {
 		const overrides = {
 			attraction,
 			friction,
 			revealAt,
 			sourceRevealUntil,
 			cloneFadeUntil,
-			cloneContents
+			cloneContents,
+			cloneFit,
+			handoff
 		};
 		if (this.#state === "idle" || this.#state === "hiding") {
 			console.warn(`MorphEngine: hide() ignored — ${this.#state}`);
@@ -515,6 +535,9 @@ var MorphEngine = class extends EventEmitter {
 		this.#revealFull = config.revealAt + (1 - config.revealAt) / 2;
 		this.#sourceRevealUntil = config.sourceRevealUntil;
 		this.#cloneFadeUntil = config.cloneFadeUntil;
+		this.#cloneFit = config.cloneFit;
+		this.#handoff = config.handoff;
+		if (config.handoff === "hard") this.#revealFull = config.revealAt;
 		this.#reconcileBorderColors(fromMeasure, toMeasure);
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
 		this.#removeBlob();
@@ -680,7 +703,9 @@ var MorphEngine = class extends EventEmitter {
 			revealAt: this.revealAt,
 			sourceRevealUntil: this.sourceRevealUntil,
 			cloneFadeUntil: this.cloneFadeUntil,
-			cloneContents: this.cloneContents
+			cloneContents: this.cloneContents,
+			cloneFit: this.cloneFit,
+			handoff: this.handoff
 		};
 		const keys = Object.keys(config);
 		if (phase === "hiding") {
@@ -709,6 +734,14 @@ var MorphEngine = class extends EventEmitter {
 		if (this.#cloneWrapper) {
 			const fade = this.#cloneFadeUntil > 0 ? clamp(1 - p / this.#cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
 			this.#cloneWrapper.style.opacity = String(fade);
+			if (this.#cloneFit === "scale") {
+				const fromRect = this.#fromMeasure.rect;
+				if (fromRect.width > 0 && fromRect.height > 0) {
+					const scaleX = parseFloat(styles.width) / fromRect.width;
+					const scaleY = parseFloat(styles.height) / fromRect.height;
+					this.#cloneWrapper.style.transform = `scale(${scaleX}, ${scaleY})`;
+				}
+			}
 		}
 		if (p >= this.#revealStart) {
 			this.#ensureRevealed();
@@ -720,7 +753,8 @@ var MorphEngine = class extends EventEmitter {
 				width: parseFloat(styles.width),
 				height: parseFloat(styles.height)
 			};
-			const fadeProgress = clamp((p - this.#revealStart) / (this.#revealFull - this.#revealStart), 0, 1);
+			const rampWidth = this.#revealFull - this.#revealStart;
+			const fadeProgress = rampWidth > 0 ? clamp((p - this.#revealStart) / rampWidth, 0, 1) : 1;
 			target.style.opacity = String(fadeProgress);
 			target.style.transformOrigin = "0 0";
 			target.style.transform = `translate(${round(blobRect.left - naturalRect.left)}px, ${round(blobRect.top - naturalRect.top)}px) scale(${blobRect.width / naturalRect.width}, ${blobRect.height / naturalRect.height})`;
@@ -862,7 +896,7 @@ var MorphEngine = class extends EventEmitter {
 			width: `${rect.width}px`,
 			height: `${rect.height}px`
 		});
-		const blobClear = this.#revealFull + (1 - this.#revealFull) / 2;
+		const blobClear = this.#handoff === "hard" ? this.#revealFull + 1e-4 : this.#revealFull + (1 - this.#revealFull) / 2;
 		return {
 			0: {
 				...rectStyles(fromMeasure.rect),
@@ -913,6 +947,8 @@ var MorphEngine = class extends EventEmitter {
 	* keeps the source's original dimensions so text never rewraps as the blob
 	* resizes; the blob's overflow:hidden clips it. The clone's own surface
 	* (background, border, shadow) is stripped — the blob renders the surface.
+	* With cloneFit: 'scale' the wrapper keeps those dimensions but is scaled to
+	* the blob's border box every frame from its top-left origin instead.
 	*/
 	#createClone(blob, fromMeasure) {
 		const clone = fromMeasure.element.cloneNode(true);
@@ -931,6 +967,7 @@ var MorphEngine = class extends EventEmitter {
 			background: "transparent",
 			borderColor: "transparent"
 		});
+		const scaling = this.#cloneFit === "scale";
 		const wrapper = document.createElement("div");
 		Object.assign(wrapper.style, {
 			position: "absolute",
@@ -938,7 +975,9 @@ var MorphEngine = class extends EventEmitter {
 			left: "0",
 			width: `${fromMeasure.rect.width}px`,
 			height: `${fromMeasure.rect.height}px`,
-			pointerEvents: "none"
+			pointerEvents: "none",
+			transformOrigin: "0 0",
+			...scaling ? { willChange: "transform" } : null
 		});
 		wrapper.appendChild(clone);
 		blob.appendChild(wrapper);

@@ -947,6 +947,86 @@
 				color: var(--violet-dim);
 				text-decoration: none;
 			}
+
+			/* ---- Continuous photo morph ----
+			   Borderless surfaces on both ends: cloneFit 'scale' scales the frozen clone
+			   to the blob's *border box*, so chrome-free is the honest case. */
+			.photo-row {
+				display: flex;
+				align-items: center;
+				gap: 1.25rem;
+				flex-wrap: wrap;
+			}
+
+			.photo-thumb {
+				display: block;
+				width: 160px;
+				height: 105px;
+				cursor: pointer;
+				border: none;
+				border-radius: 0.5rem;
+				background: none;
+				padding: 0;
+				overflow: hidden;
+				box-shadow: 0 6px 20px rgba(2, 1, 6, 0.5);
+			}
+
+			.photo-thumb img {
+				display: block;
+				width: 100%;
+				height: 100%;
+				object-fit: cover;
+			}
+
+			/* Morph target: visibility-hidden, no stylesheet opacity, centered with
+			   inset + margin so the engine keeps sole ownership of transform. */
+			.photo-full {
+				position: fixed;
+				inset: 0;
+				margin: auto;
+				z-index: 940;
+				width: 700px;
+				height: 460px;
+				max-width: 92vw;
+				visibility: hidden;
+				border-radius: 1rem;
+				overflow: hidden;
+				box-shadow: 0 30px 90px rgba(2, 1, 6, 0.7);
+			}
+
+			.photo-full img {
+				display: block;
+				width: 100%;
+				height: 100%;
+				object-fit: cover;
+			}
+
+			.photo-modes {
+				display: flex;
+				gap: 0.5rem;
+			}
+
+			.photo-mode {
+				appearance: none;
+				font: inherit;
+				font-size: 0.78rem;
+				letter-spacing: 0.04em;
+				cursor: pointer;
+				padding: 0.45rem 0.85rem;
+				color: var(--text-dim);
+				background-color: var(--bg-card);
+				border: 1px solid var(--border);
+				border-radius: 0.5rem;
+				transition:
+					color 0.2s ease,
+					border-color 0.2s ease;
+			}
+
+			.photo-mode[aria-pressed='true'] {
+				color: var(--cream);
+				border-color: var(--violet-dim);
+				background-color: var(--violet-glow);
+			}
 		</style>
 	</head>
 
@@ -1121,6 +1201,34 @@
 				</p>
 
 				<button class="confirm-pill">Delete workspace…</button>
+			</section>
+
+			<section class="section">
+				<div class="section-label">Continuous morph</div>
+				<h2 class="section-title">Photo</h2>
+				<p class="section-note">
+					The defaults dissolve the source clone early and fade the destination in — right for a
+					panel growing out of a button, wrong for a picture, which reads as fade-out, empty box,
+					fade-in. <b>cloneFit: 'scale'</b> scales the frozen clone with the blob instead of
+					freezing its pixel size, and <b>cloneFadeUntil: Infinity</b> never dissolves it, so the
+					photo is visible the whole way. <b>handoff</b> picks how the real image takes over:
+					<b>fade</b> crossfades opaque-over-opaque near the end, <b>hard</b> switches in a single
+					frame at 50%.
+				</p>
+
+				<div class="photo-row">
+					<button class="photo-thumb" aria-label="Open photo">
+						<img class="photo-image" alt="" />
+					</button>
+					<div class="photo-modes">
+						<button class="photo-mode" data-handoff="fade" aria-pressed="true">
+							handoff: fade
+						</button>
+						<button class="photo-mode" data-handoff="hard" aria-pressed="false">
+							handoff: hard
+						</button>
+					</div>
+				</div>
 			</section>
 
 			<section class="section">
@@ -1404,7 +1512,11 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			</div>
 		</dialog>
 
-		<script src="./dist/morph-engine.js?v=6"></script>
+		<div class="photo-full">
+			<img class="photo-image" alt="" />
+		</div>
+
+		<script src="./dist/morph-engine.js?v=7"></script>
 		<script>
 			const { MorphEngine, MorphGroup } = window.MorphEngine;
 
@@ -1488,7 +1600,84 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 				if (dropdownMorph.state === 'showing' || dropdownMorph.state === 'shown') {
 					dropdownMorph.hide();
 				}
+				closePhoto();
 			});
+
+
+			// ---- Continuous photo morph ----
+			// One picture, two sizes. cloneFit 'scale' + cloneFadeUntil Infinity keeps the
+			// frozen clone visible and growing for the whole flight; handoff decides whether
+			// the real <img> crossfades in under the blob or hard-switches at revealAt.
+			const PHOTO_SVG = [
+				"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 700 460'>",
+				"<defs>",
+				"<linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>",
+				"<stop offset='0' stop-color='#f0a06a'/>",
+				"<stop offset='0.45' stop-color='#b45a8f'/>",
+				"<stop offset='1' stop-color='#2b1f52'/>",
+				"</linearGradient>",
+				"</defs>",
+				"<rect width='700' height='460' fill='url(#g)'/>",
+				"<circle cx='545' cy='118' r='62' fill='#fff3d6' opacity='0.92'/>",
+				"<path d='M0 330 L150 236 L268 318 L392 214 L520 300 L700 190 L700 460 L0 460 Z' fill='#241a3f' opacity='0.85'/>",
+				"<path d='M0 392 L188 300 L336 380 L500 292 L700 372 L700 460 L0 460 Z' fill='#140e26'/>",
+				"<g fill='none' stroke='#ffffff' stroke-opacity='0.22'>",
+				"<path d='M40 60 H660 M40 100 H660 M40 140 H660 M40 180 H660'/>",
+				"</g>",
+				"<text x='40' y='434' fill='#ffe9c9' font-family='monospace' font-size='19' letter-spacing='6'>",
+				"CONTINUOUS \u00b7 700 \u00d7 460",
+				"</text>",
+				"</svg>",
+			].join('');
+			const photoSrc = `data:image/svg+xml,${encodeURIComponent(PHOTO_SVG)}`;
+			document.querySelectorAll('.photo-image').forEach((image) => {
+				image.src = photoSrc;
+			});
+
+			const photoMorph = new MorphEngine({
+				attraction: 0.09,
+				friction: 0.36,
+				zIndex: 950,
+				hide: { attraction: 0.2, friction: 0.55 },
+			});
+			const photoThumb = document.querySelector('.photo-thumb');
+			const photoFull = document.querySelector('.photo-full');
+			let photoHandoff = 'fade';
+
+			// choreography that makes the picture continuous rather than a dissolve
+			const photoFlight = () => ({
+				cloneFit: 'scale',
+				cloneFadeUntil: Infinity,
+				handoff: photoHandoff,
+				revealAt: photoHandoff === 'hard' ? 0.5 : 0.9,
+			});
+
+			const closePhoto = () => {
+				if (photoMorph.state === 'idle' || photoMorph.state === 'hiding') return;
+				photoMorph.hide(photoFlight());
+			};
+
+			photoThumb.addEventListener('click', () => {
+				if (photoMorph.state === 'idle' || photoMorph.state === 'hiding') {
+					photoMorph.show({ from: photoThumb, to: photoFull, ...photoFlight() });
+				} else {
+					closePhoto();
+				}
+			});
+			photoFull.addEventListener('click', closePhoto);
+
+			document.querySelectorAll('.photo-mode').forEach((button) => {
+				button.addEventListener('click', () => {
+					photoHandoff = button.dataset.handoff;
+					document.querySelectorAll('.photo-mode').forEach((other) => {
+						other.setAttribute('aria-pressed', String(other === button));
+					});
+				});
+			});
+
+			photoMorph.on('show', () => backdrop.setAttribute('visible', ''));
+			photoMorph.on('hide', () => backdrop.removeAttribute('visible'));
+			photoMorph.on('stop', () => backdrop.removeAttribute('visible'));
 
 			// ---- Real <dialog> morph (promote to top layer at settle) ----
 			// Everything in this block is what a <dialog-panel> custom element would

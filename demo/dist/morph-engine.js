@@ -2192,10 +2192,12 @@
 			this.#removeBlob();
 			const source = this.#sourceElement;
 			const target = this.#targetElement;
-			if (source) if (restoreSource) {
-				this.#restoreInline(source);
-				source.removeAttribute("morphing");
-			} else this.#heldSource = source;
+			if (source) {
+				if (restoreSource) {
+					this.#restoreInline(source);
+					source.removeAttribute("morphing");
+				} else this.#heldSource = source;
+			}
 			if (target) {
 				this.#restoreInline(target);
 				target.removeAttribute("morphing");

@@ -82,7 +82,7 @@ function releaseScrollLock() {
 	}
 }
 
-const CLONE_FIT_VALUES = ['freeze', 'scale'];
+const CLONE_FIT_VALUES = ['freeze', 'scale', 'reflow'];
 const HANDOFF_VALUES = ['fade', 'hard'];
 
 // A hard handoff's switch point is pinned strictly inside (0, 1): its two sparse
@@ -90,6 +90,12 @@ const HANDOFF_VALUES = ['fade', 'hard'];
 // the 0 and 100 geometry keyframes.
 const HARD_SWITCH_MIN = 0.0001;
 const HARD_SWITCH_MAX = 0.9998;
+
+// A reflow clone latches to the destination layout once both blob sides are within this
+// fraction of the destination's, so fixed-size content can't pop at the switch.
+const REFLOW_LATCH_ENTER = 0.02;
+// Hysteresis — it only unlatches back to per-frame layout past this, so it can't flap.
+const REFLOW_LATCH_EXIT = 0.04;
 
 /**
  * Falls back to a default for an unrecognized enum value, warning once per run so
@@ -102,11 +108,23 @@ const HARD_SWITCH_MAX = 0.9998;
  */
 function coerceEnum(key, value, allowed, fallback) {
 	if (allowed.includes(value)) return value;
+	const quoted = allowed.map((v) => `"${v}"`);
+	const expected =
+		quoted.length > 1
+			? `${quoted.slice(0, -1).join(', ')} or ${quoted[quoted.length - 1]}`
+			: quoted[0];
 	console.warn(
-		`MorphEngine: unknown ${key} "${value}" — falling back to "${fallback}" ` +
-			`(expected ${allowed.map((v) => `"${v}"`).join(' or ')}).`
+		`MorphEngine: unknown ${key} "${value}" — falling back to "${fallback}" (expected ${expected}).`
 	);
 	return fallback;
+}
+
+/** Total border widths from a computed or per-frame styles object; a missing side counts as 0. */
+function borderInsets(styles) {
+	return {
+		x: (parseFloat(styles.borderLeftWidth) || 0) + (parseFloat(styles.borderRightWidth) || 0),
+		y: (parseFloat(styles.borderTopWidth) || 0) + (parseFloat(styles.borderBottomWidth) || 0),
+	};
 }
 
 function clamp(value, min, max) {
@@ -252,7 +270,8 @@ export class MorphEngine extends EventEmitter {
 	#sourceRevealed = false;
 	#sourceRevealUntil = 0.25; // p where the source reveal window ends (mirrors revealStart at p→0)
 	#cloneFadeUntil = 0.25; // per-flight snapshot of the source-content clone fade window
-	#cloneFit = 'freeze'; // per-flight snapshot: 'freeze' | 'scale' clone sizing
+	#cloneFit = 'freeze'; // per-flight snapshot: 'freeze' | 'scale' | 'reflow' clone sizing
+	#cloneReflowSettled = false; // reflow: the clone has been laid out once at the destination size
 	#handoff = 'fade'; // per-flight snapshot: 'fade' | 'hard' target/blob swap
 
 	// early-settle detector — reset at every animateTo (see #armSettle)
@@ -272,9 +291,13 @@ export class MorphEngine extends EventEmitter {
 	 * @param {number} [options.cloneFadeUntil=0.25] - Progress where the source-content clone
 	 *   finishes dissolving
 	 * @param {boolean} [options.cloneContents=true] - Clone the source's content into the blob
-	 * @param {'freeze'|'scale'} [options.cloneFit='freeze'] - How the frozen clone is sized as the
-	 *   blob resizes. 'freeze' keeps it at the source's pixel size (text never rewraps);
-	 *   'scale' scales it with the blob's border box, for photo-style continuous morphs
+	 * @param {'freeze'|'scale'|'reflow'} [options.cloneFit='freeze'] - How the frozen clone is
+	 *   sized as the blob resizes. 'freeze' keeps it at the source's pixel size (text never
+	 *   rewraps); 'scale' scales it with the blob's border box, for photo-style continuous
+	 *   morphs; 'reflow' lays it out at the blob's size every frame — fluid children follow
+	 *   the box, fixed-size children (text, padding) keep their size — until the blob is
+	 *   within a couple percent of the destination box, then lays it out once at the
+	 *   destination size and rides the settle on a near-1 scale
 	 * @param {'fade'|'hard'} [options.handoff='fade'] - How the blob hands off to the target.
 	 *   'fade' ramps the target in and then fades the blob out; 'hard' swaps both in one
 	 *   instant at revealAt (the switch point is clamped strictly inside (0, 1))
@@ -285,7 +308,7 @@ export class MorphEngine extends EventEmitter {
 	 * @param {number} [options.hide.sourceRevealUntil] - Hide source reveal end
 	 * @param {number} [options.hide.cloneFadeUntil] - Hide clone fade end
 	 * @param {boolean} [options.hide.cloneContents] - Hide clone-content setting
-	 * @param {'freeze'|'scale'} [options.hide.cloneFit] - Hide clone sizing mode
+	 * @param {'freeze'|'scale'|'reflow'} [options.hide.cloneFit] - Hide clone sizing mode
 	 * @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 	 * @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	 *   hidden — a scroll mid-morph would strand the fixed-position blob
@@ -377,7 +400,7 @@ export class MorphEngine extends EventEmitter {
 	 * @param {number} [options.sourceRevealUntil] - One-off source reveal end
 	 * @param {number} [options.cloneFadeUntil] - One-off clone fade end
 	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
-	 * @param {'freeze'|'scale'} [options.cloneFit] - One-off clone sizing mode
+	 * @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 	 * @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
@@ -448,7 +471,7 @@ export class MorphEngine extends EventEmitter {
 	 * @param {number} [options.sourceRevealUntil] - One-off source reveal end
 	 * @param {number} [options.cloneFadeUntil] - One-off clone fade end
 	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
-	 * @param {'freeze'|'scale'} [options.cloneFit] - One-off clone sizing mode
+	 * @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 	 * @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
@@ -866,16 +889,57 @@ export class MorphEngine extends EventEmitter {
 
 		if (this.#cloneWrapper) {
 			const fade =
-				this.#cloneFadeUntil > 0
-					? clamp(1 - p / this.#cloneFadeUntil, 0, 1)
-					: p <= 0
-						? 1
-						: 0;
+				this.#cloneFadeUntil > 0 ? clamp(1 - p / this.#cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
 			this.#cloneWrapper.style.opacity = String(fade);
+
+			// 'reflow' lays the clone out at the blob's size each frame, so what is
+			// fluid inside it follows the box and what is fixed (text, padding) keeps
+			// its size — the same layout the destination will have. Once the blob is
+			// within a couple percent of the destination box it latches: laid out once
+			// at the destination size and only transformed from there, so the settle
+			// (overshoot included) never triggers layout and nothing fixed-size pops at
+			// the switch. It unlatches back to per-frame layout only past the wider exit
+			// tolerance, so a reversal returns cleanly without flapping at the boundary.
+			// Skipped entirely while the clone is invisible; re-entry rewrites the box.
+			if (this.#cloneFit === 'reflow' && fade > 0) {
+				const wrapper = this.#cloneWrapper;
+				// the wrapper sits in the blob's padding box, so both boxes are border
+				// box minus border widths
+				const frameInsets = borderInsets(styles);
+				const blobWidth = Math.max(0, parseFloat(styles.width) - frameInsets.x);
+				const blobHeight = Math.max(0, parseFloat(styles.height) - frameInsets.y);
+				const toInsets = this.#toMeasure.borderInsets;
+				const toWidth = this.#toMeasure.rect.width - toInsets.x;
+				const toHeight = this.#toMeasure.rect.height - toInsets.y;
+
+				let latched = false;
+				if (toWidth > 0 && toHeight > 0) {
+					const offWidth = Math.abs(blobWidth / toWidth - 1);
+					const offHeight = Math.abs(blobHeight / toHeight - 1);
+					const tolerance = this.#cloneReflowSettled ? REFLOW_LATCH_EXIT : REFLOW_LATCH_ENTER;
+					latched = offWidth < tolerance && offHeight < tolerance;
+				}
+
+				if (latched) {
+					if (!this.#cloneReflowSettled) {
+						this.#cloneReflowSettled = true;
+						wrapper.style.width = `${toWidth}px`;
+						wrapper.style.height = `${toHeight}px`;
+					}
+					wrapper.style.transform = `scale(${blobWidth / toWidth}, ${blobHeight / toHeight})`;
+				} else {
+					if (this.#cloneReflowSettled) {
+						this.#cloneReflowSettled = false;
+						wrapper.style.transform = '';
+					}
+					wrapper.style.width = `${blobWidth}px`;
+					wrapper.style.height = `${blobHeight}px`;
+				}
+			}
 
 			// 'scale' rides the blob's border box instead of staying frozen at the
 			// source's pixel size — a photo keeps growing instead of dissolving
-			if (this.#cloneFit === 'scale') {
+			else if (this.#cloneFit === 'scale') {
 				const fromRect = this.#fromMeasure.rect;
 				if (fromRect.width > 0 && fromRect.height > 0) {
 					const scaleX = parseFloat(styles.width) / fromRect.width;
@@ -901,8 +965,7 @@ export class MorphEngine extends EventEmitter {
 			// the spring's overshoot bounce once the blob has faded away
 			// a hard handoff has a zero-width ramp (revealFull === revealStart)
 			const rampWidth = this.#revealFull - this.#revealStart;
-			const fadeProgress =
-				rampWidth > 0 ? clamp((p - this.#revealStart) / rampWidth, 0, 1) : 1;
+			const fadeProgress = rampWidth > 0 ? clamp((p - this.#revealStart) / rampWidth, 0, 1) : 1;
 			target.style.opacity = String(fadeProgress);
 			target.style.transformOrigin = '0 0';
 			target.style.transform =
@@ -1040,6 +1103,8 @@ export class MorphEngine extends EventEmitter {
 			styles,
 			shadow: parseShadow(computed.boxShadow),
 			borderStyle: computed.borderTopStyle,
+			// read here rather than from styles, which only has them when styleProperties does
+			borderInsets: borderInsets(computed),
 			// applied statically to the blob (see #createBlob) — never added to
 			// styleProperties, as a blur radius or image URL has no meaningful midpoint
 			backdropFilter: computed.backdropFilter || computed.webkitBackdropFilter,
@@ -1190,7 +1255,9 @@ export class MorphEngine extends EventEmitter {
 	 * resizes; the blob's overflow:hidden clips it. The clone's own surface
 	 * (background, border, shadow) is stripped — the blob renders the surface.
 	 * With cloneFit: 'scale' the wrapper keeps those dimensions but is scaled to
-	 * the blob's border box every frame from its top-left origin instead.
+	 * the blob's border box every frame from its top-left origin instead. With
+	 * cloneFit: 'reflow' the wrapper is resized to the blob's padding box every
+	 * frame (see #applyFrame), so the clone lays itself out at each size.
 	 */
 	#createClone(blob, fromMeasure) {
 		const clone = fromMeasure.element.cloneNode(true);
@@ -1210,7 +1277,7 @@ export class MorphEngine extends EventEmitter {
 			borderColor: 'transparent',
 		});
 
-		const scaling = this.#cloneFit === 'scale';
+		const transforms = this.#cloneFit === 'scale' || this.#cloneFit === 'reflow';
 		const wrapper = document.createElement('div');
 		Object.assign(wrapper.style, {
 			position: 'absolute',
@@ -1220,12 +1287,13 @@ export class MorphEngine extends EventEmitter {
 			height: `${fromMeasure.rect.height}px`,
 			pointerEvents: 'none',
 			transformOrigin: '0 0',
-			...(scaling ? { willChange: 'transform' } : null),
+			...(transforms ? { willChange: 'transform' } : null),
 		});
 
 		wrapper.appendChild(clone);
 		blob.appendChild(wrapper);
 		this.#cloneWrapper = wrapper;
+		this.#cloneReflowSettled = false;
 	}
 
 	#removeBlob() {
@@ -1233,6 +1301,7 @@ export class MorphEngine extends EventEmitter {
 		this.#blob.remove();
 		this.#blob = null;
 		this.#cloneWrapper = null;
+		this.#cloneReflowSettled = false;
 	}
 
 	/** Marks both elements for CSS hooks — which one the blob is flying away from. */

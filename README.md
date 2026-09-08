@@ -45,7 +45,7 @@ new MorphEngine({
 	sourceRevealUntil: 0.25, // progress where the source reveal window ends (mirrors revealAt at the p→0 end)
 	cloneFadeUntil: 0.25,    // progress where the source-content clone finishes dissolving
 	cloneContents: true,     // clone the source's content into the blob
-	cloneFit: 'freeze',      // 'freeze' | 'scale' — how the clone is sized as the blob resizes
+	cloneFit: 'freeze',      // 'freeze' | 'scale' | 'reflow' — how the clone is sized as the blob resizes
 	handoff: 'fade',         // 'fade' | 'hard' — how the blob hands off to the target
 	hide: {                  // sparse overrides for the hide leg
 		attraction: 0.18,
@@ -63,16 +63,16 @@ The show leg and the hide leg are the same routine with the roles swapped, but t
 feel the same. Eight settings are **directional** — they can be set once for both legs, overridden
 for the hide leg, or overridden per call:
 
-| Key                 | Effect                                                            |
-| ------------------- | ----------------------------------------------------------------- |
-| `attraction`        | Spring attraction, (0, 1) exclusive — higher = faster             |
-| `friction`          | Spring friction, (0, 1) exclusive — lower = bouncier              |
-| `revealAt`          | Progress where the destination's reveal window begins             |
-| `sourceRevealUntil` | Progress where the origin's reveal window ends                    |
-| `cloneFadeUntil`    | Progress where the origin-content clone finishes dissolving       |
-| `cloneContents`     | Whether the origin's content is cloned into the blob at all       |
-| `cloneFit`          | `'freeze'` (default) keeps the clone at the origin's pixel size; `'scale'` scales it with the blob's border box |
-| `handoff`           | `'fade'` (default) ramps the destination in then fades the blob out; `'hard'` swaps both in one instant at `revealAt` |
+| Key                 | Effect                                                                                                                                                                                                          |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attraction`        | Spring attraction, (0, 1) exclusive — higher = faster                                                                                                                                                           |
+| `friction`          | Spring friction, (0, 1) exclusive — lower = bouncier                                                                                                                                                            |
+| `revealAt`          | Progress where the destination's reveal window begins                                                                                                                                                           |
+| `sourceRevealUntil` | Progress where the origin's reveal window ends                                                                                                                                                                  |
+| `cloneFadeUntil`    | Progress where the origin-content clone finishes dissolving                                                                                                                                                     |
+| `cloneContents`     | Whether the origin's content is cloned into the blob at all                                                                                                                                                     |
+| `cloneFit`          | `'freeze'` (default) keeps the clone at the origin's pixel size; `'scale'` scales it with the blob's border box; `'reflow'` lays it out at the blob's size (fluid children follow the box, text keeps its size) |
+| `handoff`           | `'fade'` (default) ramps the destination in then fades the blob out; `'hard'` swaps both in one instant at `revealAt`                                                                                           |
 
 Three places to set them, resolved per run in this order (later wins, `undefined` never overrides):
 
@@ -85,14 +85,14 @@ const morph = new MorphEngine({
 	// 2. hide bag — sparse, overlays the base on the hide leg only
 	hide: {
 		attraction: 0.18, // snap home faster than it opened
-		friction: 0.5,    // and land without the bounce
-		revealAt: 0.6     // show the card again earlier on the way back
-	}
+		friction: 0.5, // and land without the bounce
+		revealAt: 0.6, // show the card again earlier on the way back
+	},
 });
 
 // 3. per-call — one-off, wins over both
 await morph.show({ from: card, to: panel, attraction: 0.06 }); // this one drifts open
-await morph.hide({ friction: 0.8 });                          // this one lands dead
+await morph.hide({ friction: 0.8 }); // this one lands dead
 ```
 
 A common shape: a soft, slightly overshooting open and a quick, damped close.
@@ -101,7 +101,7 @@ A common shape: a soft, slightly overshooting open and a quick, damped close.
 new MorphEngine({
 	attraction: 0.08,
 	friction: 0.28,
-	hide: { attraction: 0.2, friction: 0.55 }
+	hide: { attraction: 0.2, friction: 0.55 },
 });
 ```
 
@@ -113,8 +113,8 @@ and clone settings untouched.
 `hideConfig` is a public field, so the hide leg can be retuned at any time:
 
 ```js
-morph.hideConfig.attraction = 0.25;   // future hides only
-morph.hideConfig = {};                // hide now matches show again
+morph.hideConfig.attraction = 0.25; // future hides only
+morph.hideConfig = {}; // hide now matches show again
 ```
 
 `setAttraction()` / `setFriction()` apply live to the running spring **and** update the
@@ -124,8 +124,8 @@ still wins on the way back. The plain choreography fields (`revealAt`, `sourceRe
 fresh at the start of each run:
 
 ```js
-morph.setAttraction(0.15);    // show/default dial + the live spring
-morph.cloneContents = false;  // from the next flight on
+morph.setAttraction(0.15); // show/default dial + the live spring
+morph.cloneContents = false; // from the next flight on
 ```
 
 ### Photo / continuous morph
@@ -139,16 +139,16 @@ settings turn it into one continuous zoom:
 await morph.show({
 	from: thumbnail,
 	to: fullImage,
-	cloneFit: 'scale',           // the frozen picture scales with the blob instead of freezing
-	cloneFadeUntil: Infinity,    // ...and never dissolves — `Infinity` is the "never" value
-	revealAt: 0.9,               // hand off late, once the geometry is basically there
-	oneWay: true
+	cloneFit: 'scale', // the frozen picture scales with the blob instead of freezing
+	cloneFadeUntil: Infinity, // ...and never dissolves — `Infinity` is the "never" value
+	revealAt: 0.9, // hand off late, once the geometry is basically there
+	oneWay: true,
 });
 ```
 
 `cloneFit` and fading are orthogonal: `cloneFadeUntil: Infinity` holds the clone at full opacity
 for the whole flight, so the picture is visible the entire way. By `revealFull` the real image is
-opaque *underneath*, and the blob (clone included) then fades over an identical opaque layer —
+opaque _underneath_, and the blob (clone included) then fades over an identical opaque layer —
 no translucency dip.
 
 For a crisper swap — useful when the thumbnail is cover-cropped to a different aspect ratio, so
@@ -162,8 +162,8 @@ await morph.show({
 	cloneFit: 'scale',
 	cloneFadeUntil: Infinity,
 	handoff: 'hard',
-	revealAt: 0.5,               // blob out, target in, at the halfway point
-	oneWay: true
+	revealAt: 0.5, // blob out, target in, at the halfway point
+	oneWay: true,
 });
 ```
 
@@ -171,6 +171,38 @@ await morph.show({
 with a step, both at `revealAt`. The switch point is clamped strictly inside `(0, 1)`, so
 `revealAt: 0` and `revealAt: 1` land a hair inside the flight rather than colliding with its end
 keyframes.
+
+### Card / mixed-content morph
+
+`'scale'` stretches everything in the clone by the blob's width and height ratios. That is right
+for one bitmap and wrong for a card: a caption under a photo is 13px on both ends of the flight,
+so a scaled clone paints it at 36px mid-flight and its picture lands short of the real one by
+the caption's share of the card. `cloneFit: 'reflow'` sizes the clone's wrapper to the blob
+instead, so the clone lays itself out at every size the blob passes through — fluid children
+(a `width: 100%` picture) follow the box, fixed-size children (text, padding, borders) keep
+theirs — exactly how the destination lays out the same markup:
+
+```js
+await morph.show({
+	from: card,
+	to: fullCard,
+	cloneFit: 'reflow',
+	cloneFadeUntil: Infinity,
+	revealAt: 0.9,
+	oneWay: true,
+});
+```
+
+Once the blob is within a couple percent of the destination box, the clone is laid out
+**once** at that size and only transformed by a near-1 scale for the rest of the spring
+(overshoot included), so the settle never triggers layout and nothing fixed-size pops at the
+switch — the clone's layout at handoff is the destination's within the latch tolerance. It
+latches on proximity rather than on `revealAt`, and unlatches only past a wider tolerance, so
+a reversal returns to per-frame layout without flapping at the boundary. Costs one layout of
+the clone's subtree per frame until it latches; the blob's own box is laid out per frame in
+every mode. The clone must be able to lay itself out at other sizes:
+pin the origin's fluid children with relative sizes (`width: 100%`, `aspect-ratio`) rather
+than pixels.
 
 An unrecognized `cloneFit` or `handoff` value warns and falls back to the default.
 
@@ -183,18 +215,18 @@ already in flight; only the spring dials change direction.
 
 ## API
 
-| Member                                              | Description                                                                                                                                                                                                                                                                                                           |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`. `...overrides` accepts any of the eight directional keys.                                                                       |
-| `hide({ ...overrides }?)`                           | Morph back (remembers the pair, re-measures both). Same promise semantics and the same one-off overrides; no-argument `hide()` remains supported.                                                                                                                                                                     |
-| `complete({ restoreSource? })`                      | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.             |
-| `stop({ restoreSource? })`                          | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
-| `restoreSource()`                                   | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
-| `destroy()`                                         | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
-| `setAttraction(n)` / `setFriction(n)`               | Live spring tuning that also updates the show/default setting. Does not touch `hideConfig`.                                                                                                                                                                                                                           |
-| `hideConfig`                                        | Mutable sparse bag of hide-leg overrides (the constructor's `hide` option).                                                                                                                                                                                                                                           |
-| `state`                                             | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
-| `progress`                                          | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
+| Member                                                | Description                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`. `...overrides` accepts any of the eight directional keys.                                                                   |
+| `hide({ ...overrides }?)`                             | Morph back (remembers the pair, re-measures both). Same promise semantics and the same one-off overrides; no-argument `hide()` remains supported.                                                                                                                                                                     |
+| `complete({ restoreSource? })`                        | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.             |
+| `stop({ restoreSource? })`                            | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
+| `restoreSource()`                                     | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
+| `destroy()`                                           | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
+| `setAttraction(n)` / `setFriction(n)`                 | Live spring tuning that also updates the show/default setting. Does not touch `hideConfig`.                                                                                                                                                                                                                           |
+| `hideConfig`                                          | Mutable sparse bag of hide-leg overrides (the constructor's `hide` option).                                                                                                                                                                                                                                           |
+| `state`                                               | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
+| `progress`                                            | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
 
 ## Events
 
@@ -237,20 +269,20 @@ import { MorphGroup } from '@magic-spells/morph-engine';
 
 const group = new MorphGroup({
 	friction: 0.35,
-	hide: { friction: 0.45 }
+	hide: { friction: 0.45 },
 });
 
 const pairs = cards.map((from, index) => ({
 	from,
 	to: slots[index],
-	display: 'grid'
+	display: 'grid',
 }));
 
 await group.show(pairs, { stagger: 40, oneWay: true, attraction: 0.09 });
 
-group.engines;                    // inspect the pooled engines
+group.engines; // inspect the pooled engines
 await group.hide({ stagger: -40 }); // fly home in reverse order
-group.stop(options);       // cancel delayed launches and stop live flights
+group.stop(options); // cancel delayed launches and stop live flights
 group.completeAll(options);
 group.destroy();
 ```
@@ -279,7 +311,12 @@ flights have no closed-form position-at-time.
 - Velocity isn't carried across a mid-flight reversal (needs a velocity readout in physics-engine — planned).
 - `cloneFit: 'scale'` scales the clone to the blob's **border box**, so a source with a visible
   border or padding will see that chrome scale with the content — use it on borderless surfaces
-  (photos, flush media) where the clone fills the box.
+  (photos, flush media) where the clone fills the box. `'reflow'` is the mode for anything with
+  text or chrome in it.
+- `cloneFit: 'reflow'` is exact when the origin and the destination lay the same markup out the
+  same way at their two sizes (fluid pictures, fixed text); a destination that changes the
+  layout rules (a caption moved out of flow, a different font size) still lands on it, but the
+  clone shows the origin's layout on the way.
 - Native `<dialog>`/popover top layer paints above the blob — fly them in normal flow and promote on the `reveal` event (destination is still at opacity 0 there; the demo's modal-handoff section is the reference pattern), or wait for the planned popover-API blob.
 
 ## Demo

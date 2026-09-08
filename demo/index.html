@@ -1027,6 +1027,58 @@
 				border-color: var(--violet-dim);
 				background-color: var(--violet-glow);
 			}
+
+			/* ---- Card morph (mixed content) ----
+			   Same markup and same chrome on both ends: a fluid picture and a caption
+			   that is 13px at either size — the case cloneFit 'reflow' exists for. */
+			.media-card,
+			.media-card-full {
+				padding: 0.6rem;
+				text-align: left;
+				background-color: var(--bg-card);
+				border: 1px solid var(--border);
+				border-radius: 0.75rem;
+				overflow: hidden;
+			}
+
+			.media-card img,
+			.media-card-full img {
+				display: block;
+				width: 100%;
+				aspect-ratio: 700 / 460;
+				object-fit: cover;
+				border-radius: 0.5rem;
+			}
+
+			.media-caption {
+				display: block;
+				margin: 0.55rem 0.15rem 0.1rem;
+				font-size: 0.8125rem;
+				letter-spacing: 0.02em;
+				color: var(--text-dim);
+			}
+
+			.media-card {
+				display: block;
+				width: 240px;
+				font: inherit;
+				color: inherit;
+				cursor: pointer;
+			}
+
+			/* Morph target: visibility-hidden, height from its content so the clone's
+			   reflowed layout and the destination's are the same layout. */
+			.media-card-full {
+				position: fixed;
+				inset: 0;
+				margin: auto;
+				z-index: 940;
+				width: 680px;
+				max-width: 92vw;
+				height: fit-content;
+				visibility: hidden;
+				box-shadow: 0 30px 90px rgba(2, 1, 6, 0.7);
+			}
 		</style>
 	</head>
 
@@ -1232,12 +1284,28 @@
 			</section>
 
 			<section class="section">
+				<div class="section-label">Mixed content</div>
+				<h2 class="section-title">Card</h2>
+				<p class="section-note">
+					A picture with a caption under it. <b>'scale'</b> would paint that 13px caption at 36px
+					mid-flight and land the picture short; <b>cloneFit: 'reflow'</b> sizes the clone's wrapper
+					to the blob instead, so the picture follows the box and the caption keeps its size — the
+					layout the destination has, all the way in.
+				</p>
+
+				<button class="media-card" aria-label="Open card">
+					<img class="photo-image" alt="" />
+					<span class="media-caption">Golden hour · 700 × 460</span>
+				</button>
+			</section>
+
+			<section class="section">
 				<div class="section-label">Parameter lab</div>
 				<h2 class="section-title">Tune the feel</h2>
 				<p class="section-note">
 					Attraction and friction apply <b>live, mid-flight</b>. The reveal point takes effect on
-					the next morph. Enable asymmetric hide settings for a faster, more damped return;
-					they also take over when a show reverses mid-flight.
+					the next morph. Enable asymmetric hide settings for a faster, more damped return; they
+					also take over when a show reverses mid-flight.
 				</p>
 
 				<div class="lab">
@@ -1287,11 +1355,10 @@
 				<div class="section-label">Group flights / the stage</div>
 				<h2 class="section-title">Move an album as a group</h2>
 				<p class="section-note">
-					Six independent engines launch through <b>MorphGroup</b>, staggered 60ms apart — the
-					tiles fly up from the bottom shelf into the empty slots. Reset flies them home with a
+					Six independent engines launch through <b>MorphGroup</b>, staggered 60ms apart — the tiles
+					fly up from the bottom shelf into the empty slots. Reset flies them home with a
 					<b>negative stagger</b>, so the group returns in the opposite order. The manual flight
-					below shows <b>complete()</b>: a one-way morph the engine permanently hands to its
-					target.
+					below shows <b>complete()</b>: a one-way morph the engine permanently hands to its target.
 				</p>
 
 				<div class="stage-controls">
@@ -1516,7 +1583,12 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			<img class="photo-image" alt="" />
 		</div>
 
-		<script src="./dist/morph-engine.js?v=7"></script>
+		<div class="media-card-full">
+			<img class="photo-image" alt="" />
+			<span class="media-caption">Golden hour · 700 × 460</span>
+		</div>
+
+		<script src="./dist/morph-engine.js?v=8"></script>
 		<script>
 			const { MorphEngine, MorphGroup } = window.MorphEngine;
 
@@ -1603,31 +1675,30 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 				closePhoto();
 			});
 
-
 			// ---- Continuous photo morph ----
 			// One picture, two sizes. cloneFit 'scale' + cloneFadeUntil Infinity keeps the
 			// frozen clone visible and growing for the whole flight; handoff decides whether
 			// the real <img> crossfades in under the blob or hard-switches at revealAt.
 			const PHOTO_SVG = [
 				"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 700 460'>",
-				"<defs>",
+				'<defs>',
 				"<linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>",
 				"<stop offset='0' stop-color='#f0a06a'/>",
 				"<stop offset='0.45' stop-color='#b45a8f'/>",
 				"<stop offset='1' stop-color='#2b1f52'/>",
-				"</linearGradient>",
-				"</defs>",
+				'</linearGradient>',
+				'</defs>',
 				"<rect width='700' height='460' fill='url(#g)'/>",
 				"<circle cx='545' cy='118' r='62' fill='#fff3d6' opacity='0.92'/>",
 				"<path d='M0 330 L150 236 L268 318 L392 214 L520 300 L700 190 L700 460 L0 460 Z' fill='#241a3f' opacity='0.85'/>",
 				"<path d='M0 392 L188 300 L336 380 L500 292 L700 372 L700 460 L0 460 Z' fill='#140e26'/>",
 				"<g fill='none' stroke='#ffffff' stroke-opacity='0.22'>",
 				"<path d='M40 60 H660 M40 100 H660 M40 140 H660 M40 180 H660'/>",
-				"</g>",
+				'</g>',
 				"<text x='40' y='434' fill='#ffe9c9' font-family='monospace' font-size='19' letter-spacing='6'>",
-				"CONTINUOUS \u00b7 700 \u00d7 460",
-				"</text>",
-				"</svg>",
+				'CONTINUOUS \u00b7 700 \u00d7 460',
+				'</text>',
+				'</svg>',
 			].join('');
 			const photoSrc = `data:image/svg+xml,${encodeURIComponent(PHOTO_SVG)}`;
 			document.querySelectorAll('.photo-image').forEach((image) => {
@@ -1680,6 +1751,39 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 			photoMorph.on('show', () => backdrop.setAttribute('visible', ''));
 			photoMorph.on('hide', () => backdrop.removeAttribute('visible'));
 			photoMorph.on('stop', () => backdrop.removeAttribute('visible'));
+
+			// ---- Card morph (mixed content) ----
+			// Picture + caption. cloneFit 'reflow' lays the clone out at each size the blob
+			// passes through; it latches to the destination layout as the blob closes in, so
+			// the caption never pops.
+			const cardMorph = new MorphEngine({
+				attraction: 0.09,
+				friction: 0.36,
+				zIndex: 950,
+				hide: { attraction: 0.2, friction: 0.55 },
+			});
+			const mediaCard = document.querySelector('.media-card');
+			const mediaCardFull = document.querySelector('.media-card-full');
+			const mediaFlight = { cloneFit: 'reflow', cloneFadeUntil: Infinity, revealAt: 0.9 };
+
+			const closeMediaCard = () => {
+				if (cardMorph.state === 'idle' || cardMorph.state === 'hiding') return;
+				cardMorph.hide(mediaFlight);
+			};
+
+			mediaCard.addEventListener('click', () => {
+				if (cardMorph.state === 'idle' || cardMorph.state === 'hiding') {
+					cardMorph.show({ from: mediaCard, to: mediaCardFull, ...mediaFlight });
+				} else {
+					closeMediaCard();
+				}
+			});
+			mediaCardFull.addEventListener('click', closeMediaCard);
+			backdrop.addEventListener('click', closeMediaCard);
+
+			cardMorph.on('show', () => backdrop.setAttribute('visible', ''));
+			cardMorph.on('hide', () => backdrop.removeAttribute('visible'));
+			cardMorph.on('stop', () => backdrop.removeAttribute('visible'));
 
 			// ---- Real <dialog> morph (promote to top layer at settle) ----
 			// Everything in this block is what a <dialog-panel> custom element would
@@ -1990,14 +2094,11 @@ morph.<span class="tk-fn">on</span>(<span class="tk-str">'shown'</span>, () =&gt
 				if (stageGroup.state === 'hiding') return;
 				// live group flights fly home last-tile-first; only completed or
 				// manual residue needs the instant app-side cleanup
-				const flyingHome =
-					stageGroup.state !== 'idle' ? stageGroup.hide({ stagger: -60 }) : null;
+				const flyingHome = stageGroup.state !== 'idle' ? stageGroup.hide({ stagger: -60 }) : null;
 				manualMorph.stop();
 				watchStageReadout();
 				if (flyingHome) await flyingHome;
-				[...stageSources, ...stageTargets, manualSource, manualTarget].forEach(
-					clearMorphOwnership
-				);
+				[...stageSources, ...stageTargets, manualSource, manualTarget].forEach(clearMorphOwnership);
 				stageCompleteCount = 0;
 				stageMoveButton.disabled = false;
 				manualCompleteButton.disabled = false;

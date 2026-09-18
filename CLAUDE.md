@@ -8,6 +8,9 @@ Shared-element morph engine ("container transform"). A fixed-position `<morph-bl
 
 - `src/morph-engine.js` — the single-flight `MorphEngine` plus module-level shadow-lerp and refcounted scroll-lock helpers
 - `src/morph-group.js` — `MorphGroup`, a pooled fan-out trigger for concurrent element pairs
+- `src/color.js` — color normalization: every captured color becomes `rgba()` before it reaches frame-engine (see Gotchas)
+- `src/shadow.js` — box-shadow capture (`parseShadow`) and the manual first-shadow lerp (`lerpShadow`)
+- `src/blob-style.js` — the blob's static base styles, split out so they can be asserted without a DOM
 - `src/event-emitter.js` — vendored copy of physics-engine's EventEmitter
 - `demo/index.html` — dark demo: task cards → detail panel, dropdown trigger → options, asymmetric Parameter Lab, the continuous photo morph (`cloneFit: 'scale'` + `cloneFadeUntil: Infinity`, with a fade/hard `handoff` toggle), the mixed-content card morph (`cloneFit: 'reflow'` — picture + fixed-size caption), and the MorphGroup stage (tiles fly up staggered, Reset returns them reverse-order; manual flight demos `complete()`). Script tag carries `?v=8` — bump it if the browser serves a stale dev build
 - `scripts/build.mjs` — Vite 8/rolldown build (split-panel pattern, no CSS): ESM externalizes the two engine deps; UMD bundles them (global `MorphEngine`, so the class is `MorphEngine.MorphEngine`)
@@ -34,11 +37,12 @@ Shared-element morph engine ("container transform"). A fixed-position `<morph-bl
 
 ## Gotchas
 
+- **Every captured color is normalized to `rgba()` in `#measure`.** frame-engine only recognizes hex / `rgb()` / `hsl()` / `color(srgb …)`. Chrome computes a Tailwind v4 opacity modifier (`border-border/60` → `color-mix(in oklab, …)`) as `oklab(L a b / a)`; pair that with a legacy `rgb()` at the other end and frame-engine interpolates to `rgb(NaN,NaN,NaN)`, which the CSSOM silently drops — the blob's border then falls back to `currentColor` and paints an opaque line for the whole flight. `src/color.js` converts oklab/oklch/lab/lch/`color()`/hsl/hex up front so the pipeline only ever sees one syntax.
 - Morph targets must be resting-hidden with `visibility: hidden` and must NOT have stylesheet `opacity` or transform-based positioning (engine drives inline `opacity`/`transform`; demo centers the panel with `inset: 0; margin: auto`).
 - The spring lives on rAF — Chrome pauses rAF for occluded windows, freezing a morph mid-flight until the window is visible again (it resumes cleanly; timeDelta is capped upstream).
 - One engine per concurrent flight; two engines must never share an element — saved inline styles would cross-contaminate. Refcounted locking makes N independent engines safe. Concurrent blobs with equal `zIndex` tie-break by DOM order.
 - `deps`: both `@magic-spells/physics-engine` and `@magic-spells/frame-engine` are real npm deps (published 1.0.0). The ESM build externalizes them; UMD bundles them.
-- No test suite (repo convention) — verify via the demo. A deterministic trick that works well: shim `requestAnimationFrame` with a fake-time pump in the console and drive the whole lifecycle synchronously.
+- `npm test` (node:test, `test/*.test.mjs`) covers the pure helpers only — color normalization, shadow parsing, the blob's base styles. Everything with a DOM or a spring in it is still verified via the demo. A deterministic trick that works well: shim `requestAnimationFrame` with a fake-time pump in the console and drive the whole lifecycle synchronously.
 
 ## Future work (agreed scope cuts)
 

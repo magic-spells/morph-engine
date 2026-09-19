@@ -1,6 +1,9 @@
 import PhysicsEngine from '@magic-spells/physics-engine';
 import FrameEngine from '@magic-spells/frame-engine';
 import EventEmitter from './event-emitter.js';
+import { normalizeColor, parseColor } from './color.js';
+import { blobBaseStyle } from './blob-style.js';
+import { parseShadow, lerpShadow } from './shadow.js';
 
 // Spring travel distance recommended by physics-engine. All choreography is driven
 // off p = position / TRAVEL — never the change event's own `progress` field, which
@@ -133,96 +136,6 @@ function clamp(value, min, max) {
 
 function round(value) {
 	return Math.round(value * 100) / 100;
-}
-
-const COLOR_PATTERN = /rgba?\([^)]*\)/;
-
-/**
- * Parses a computed rgb()/rgba() color string into channels.
- * Computed styles always serialize sRGB colors this way.
- * @param {string} colorString
- * @returns {{red: number, green: number, blue: number, alpha: number}}
- */
-function parseColor(colorString) {
-	const match = colorString.match(/rgba?\(([^)]*)\)/);
-	if (!match) return { red: 0, green: 0, blue: 0, alpha: 1 };
-	const parts = match[1].split(',').map((part) => parseFloat(part));
-	return {
-		red: parts[0] || 0,
-		green: parts[1] || 0,
-		blue: parts[2] || 0,
-		alpha: parts.length > 3 ? parts[3] : 1,
-	};
-}
-
-/**
- * Parses a computed box-shadow into its first shadow's parts.
- * Handles both serialization orders (color-first and color-last).
- * @param {string} computedShadow - Value from getComputedStyle().boxShadow
- * @returns {{x: number, y: number, blur: number, spread: number, color: Object}|null}
- */
-function parseShadow(computedShadow) {
-	if (!computedShadow || computedShadow === 'none') return null;
-
-	// first shadow only — split on the first comma outside parens
-	let first = computedShadow;
-	let depth = 0;
-	for (let i = 0; i < computedShadow.length; i++) {
-		const character = computedShadow[i];
-		if (character === '(') depth++;
-		else if (character === ')') depth--;
-		else if (character === ',' && depth === 0) {
-			first = computedShadow.slice(0, i);
-			break;
-		}
-	}
-
-	const colorMatch = first.match(COLOR_PATTERN);
-	const color = parseColor(colorMatch ? colorMatch[0] : 'rgba(0, 0, 0, 1)');
-	const lengths = first
-		.replace(COLOR_PATTERN, '')
-		.trim()
-		.split(/\s+/)
-		.filter((token) => token !== 'inset' && token !== '')
-		.map(parseFloat);
-	const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
-
-	return { x, y, blur, spread, color };
-}
-
-/**
- * Interpolates two parsed shadows at raw p (extrapolates during overshoot,
- * so the shadow bounces with the geometry). A missing end fades through the
- * other end's color at alpha 0 to avoid a hue lurch through transparent black.
- * @param {Object|null} fromShadow
- * @param {Object|null} toShadow
- * @param {number} p
- * @returns {string} A CSS box-shadow value
- */
-function lerpShadow(fromShadow, toShadow, p) {
-	if (!fromShadow && !toShadow) return 'none';
-
-	const zeroed = (other) => ({
-		x: 0,
-		y: 0,
-		blur: 0,
-		spread: 0,
-		color: { ...other.color, alpha: 0 },
-	});
-	const start = fromShadow || zeroed(toShadow);
-	const end = toShadow || zeroed(fromShadow);
-	const lerp = (a, b) => a + (b - a) * p;
-
-	const x = round(lerp(start.x, end.x));
-	const y = round(lerp(start.y, end.y));
-	const blur = round(Math.max(0, lerp(start.blur, end.blur)));
-	const spread = round(lerp(start.spread, end.spread));
-	const red = Math.round(clamp(lerp(start.color.red, end.color.red), 0, 255));
-	const green = Math.round(clamp(lerp(start.color.green, end.color.green), 0, 255));
-	const blue = Math.round(clamp(lerp(start.color.blue, end.color.blue), 0, 255));
-	const alpha = round(clamp(lerp(start.color.alpha, end.color.alpha), 0, 1));
-
-	return `${x}px ${y}px ${blur}px ${spread}px rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 /**
@@ -1095,7 +1008,15 @@ export class MorphEngine extends EventEmitter {
 		const computed = getComputedStyle(element);
 		const styles = {};
 		for (const property of this.#styleProperties) {
-			styles[property] = computed[property];
+			const value = computed[property];
+			// Colors are normalized to rgba() here, at the only point they enter the
+			// pipeline. Chrome serializes a Tailwind opacity modifier
+			// (color-mix(in oklab, …)) as `oklab(L a b / a)`, which frame-engine does
+			// not recognize as a color: pair one with a legacy rgb() at the other end
+			// and it interpolates to `rgb(NaN,NaN,NaN)`, an invalid value the CSSOM
+			// drops — the blob's border then falls back to currentColor and paints an
+			// opaque line for the whole flight.
+			styles[property] = /color$/i.test(property) ? (normalizeColor(value) ?? value) : value;
 		}
 		const measure = {
 			element,
@@ -1194,26 +1115,7 @@ export class MorphEngine extends EventEmitter {
 
 	#createBlob(fromMeasure, toMeasure, cloneContents) {
 		const blob = document.createElement('morph-blob');
-		const borderStyle =
-			toMeasure.borderStyle !== 'none'
-				? toMeasure.borderStyle
-				: fromMeasure.borderStyle !== 'none'
-					? fromMeasure.borderStyle
-					: 'solid';
-
-		Object.assign(blob.style, {
-			position: 'fixed',
-			top: '0',
-			left: '0',
-			margin: '0',
-			boxSizing: 'border-box',
-			pointerEvents: 'none',
-			overflow: 'hidden',
-			display: 'block',
-			zIndex: String(this.zIndex),
-			borderStyle,
-			willChange: 'top, left, width, height, opacity',
-		});
+		Object.assign(blob.style, blobBaseStyle(fromMeasure, toMeasure, this.zIndex));
 
 		// Glass/texture surfaces (backdrop blur, gradient/image fills) have no
 		// meaningful midpoint, so they ride statically through the flight rather than

@@ -8,11 +8,6 @@ import { normalizeColor, parseColor } from '../src/color.js';
 // i.e. color-mix(in oklab, …)) and the task panel's plain `border-strong` token.
 const CARD_BORDER = 'oklab(0.208595 -0.00127372 -0.0127292 / 0.6)';
 const PANEL_BORDER = 'rgb(28, 32, 41)';
-const CARD_SHADOW =
-	'rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, ' +
-	'rgba(255, 255, 255, 0.04) 0px 1px 0px 0px inset, rgba(0, 0, 0, 0.4) 0px 1px 2px 0px, ' +
-	'rgba(0, 0, 0, 0.5) 0px 18px 40px -20px';
-
 test('normalizes the Pyramid card border (oklab from color-mix) to rgba', () => {
 	// oklab L 0.2086 is #15181e, the dark --color-border token; /60 keeps its alpha
 	assert.equal(normalizeColor(CARD_BORDER), 'rgba(21, 24, 30, 0.6)');
@@ -38,6 +33,17 @@ test('normalizes the modern color syntaxes a computed style can carry', () => {
 	assert.equal(normalizeColor('oklab(0 0 0)'), 'rgba(0, 0, 0, 1)');
 	// unknown syntaxes are handed back untouched for the caller to pass through
 	assert.equal(normalizeColor('var(--nope)'), null);
+});
+
+test('hue units and malformed hex do not silently misread', () => {
+	// getComputedStyle always emits bare degrees, but author strings can carry units
+	const half = normalizeColor('oklch(0.7 0.1 180)');
+	assert.equal(normalizeColor('oklch(0.7 0.1 0.5turn)'), half);
+	assert.equal(normalizeColor('oklch(0.7 0.1 200grad)'), half);
+	assert.equal(normalizeColor('oklch(0.7 0.1 180deg)'), half);
+	// a hex of an invalid length is not a color — pass it through untouched
+	assert.equal(normalizeColor('#abcde'), null);
+	assert.equal(normalizeColor('#abcdefa'), null);
 });
 
 test('the normalized card/panel pair interpolates in frame-engine (no NaN)', () => {

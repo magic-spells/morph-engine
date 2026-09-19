@@ -98,6 +98,21 @@ function numberToken(token, scale = 1) {
 	if (Number.isNaN(value)) return 0;
 	return token.trim().endsWith("%") ? value / 100 * scale : value;
 }
+/**
+* A hue token in degrees. getComputedStyle always serializes hues as bare degrees,
+* but normalizeColor is also handed raw box-shadow/author strings, so the other
+* three <angle> units are honoured rather than silently read as degrees.
+*/
+function hueToken(token) {
+	if (token === void 0 || token === "none") return 0;
+	const value = parseFloat(token);
+	if (Number.isNaN(value)) return 0;
+	const unit = String(token).trim().toLowerCase();
+	if (unit.endsWith("turn")) return value * 360;
+	if (unit.endsWith("grad")) return value * .9;
+	if (unit.endsWith("rad")) return value * 180 / Math.PI;
+	return value;
+}
 function alphaToken(token) {
 	if (token === void 0 || token === "none") return 1;
 	const value = parseFloat(token);
@@ -211,7 +226,7 @@ function normalizeColor(value) {
 		const [r, g, b, a] = rgbParts;
 		return format(numberToken(r, 255), numberToken(g, 255), numberToken(b, 255), alphaToken(a));
 	}
-	const hexMatch = input.match(/^#([0-9a-f]{3,8})$/i);
+	const hexMatch = input.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
 	if (hexMatch) {
 		const hex = hexMatch[1];
 		const wide = hex.length > 4;
@@ -237,7 +252,7 @@ function normalizeColor(value) {
 	const oklchParts = functionArguments(input, "oklch");
 	if (oklchParts) {
 		const [L, C, H, alpha] = oklchParts;
-		const hue = numberToken(H) * Math.PI / 180;
+		const hue = hueToken(H) * Math.PI / 180;
 		const chroma = numberToken(C, .4);
 		return fromLinear(oklabToLinearSrgb(numberToken(L, 1), chroma * Math.cos(hue), chroma * Math.sin(hue)), alphaToken(alpha));
 	}
@@ -249,7 +264,7 @@ function normalizeColor(value) {
 	const lchParts = functionArguments(input, "lch");
 	if (lchParts) {
 		const [L, C, H, alpha] = lchParts;
-		const hue = numberToken(H) * Math.PI / 180;
+		const hue = hueToken(H) * Math.PI / 180;
 		const chroma = numberToken(C, 150);
 		return fromLinear(labToLinearSrgb(numberToken(L, 100), chroma * Math.cos(hue), chroma * Math.sin(hue)), alphaToken(alpha));
 	}

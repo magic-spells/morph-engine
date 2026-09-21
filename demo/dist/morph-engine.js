@@ -1760,6 +1760,418 @@
 		}
 	};
 	//#endregion
+	//#region src/color.js
+	/**
+	* Color normalization for captured computed styles.
+	*
+	* Computed border/background colors are NOT always legacy `rgb()`. A Tailwind v4
+	* opacity modifier (`border-border/60`) emits
+	* `color-mix(in oklab, var(--color-border) 60%, transparent)`, which Chrome computes —
+	* and getComputedStyle serializes — as `oklab(L a b / alpha)`. frame-engine only
+	* recognizes hex / rgb() / hsl() / color(srgb …); handed an `oklab()` string it treats
+	* the value as non-interpolable, and a keyframe pair that mixes one of those with a
+	* legacy `rgb()` yields `rgb(NaN,NaN,NaN)` — an invalid value the CSSOM silently drops,
+	* so the blob's border falls back to `currentColor` and paints an opaque line
+	* (white-on-dark). Normalizing every captured color to `rgba()` up front keeps the
+	* whole pipeline in one syntax frame-engine can actually lerp.
+	*/
+	var clamp01 = (value) => value < 0 ? 0 : value > 1 ? 1 : value;
+	/** Strips the function name and splits `a b c / d` (or the legacy comma form) into tokens. */
+	function functionArguments(value, name) {
+		const match = value.match(new RegExp(`^${name}\\(\\s*(.+?)\\s*\\)$`, "i"));
+		if (!match) return null;
+		const [main, alphaPart] = match[1].split("/");
+		const parts = main.trim().split(/[\s,]+/).filter(Boolean);
+		if (alphaPart !== void 0) parts.push(alphaPart.trim());
+		return parts;
+	}
+	/** A number or percentage token; percentages resolve against `scale`. */
+	function numberToken(token, scale = 1) {
+		if (token === void 0 || token === "none") return 0;
+		const value = parseFloat(token);
+		if (Number.isNaN(value)) return 0;
+		return token.trim().endsWith("%") ? value / 100 * scale : value;
+	}
+	/**
+	* A hue token in degrees. getComputedStyle always serializes hues as bare degrees,
+	* but normalizeColor is also handed raw box-shadow/author strings, so the other
+	* three <angle> units are honoured rather than silently read as degrees.
+	*/
+	function hueToken(token) {
+		if (token === void 0 || token === "none") return 0;
+		const value = parseFloat(token);
+		if (Number.isNaN(value)) return 0;
+		const unit = String(token).trim().toLowerCase();
+		if (unit.endsWith("turn")) return value * 360;
+		if (unit.endsWith("grad")) return value * .9;
+		if (unit.endsWith("rad")) return value * 180 / Math.PI;
+		return value;
+	}
+	function alphaToken(token) {
+		if (token === void 0 || token === "none") return 1;
+		const value = parseFloat(token);
+		if (Number.isNaN(value)) return 1;
+		return clamp01(token.trim().endsWith("%") ? value / 100 : value);
+	}
+	/** Linear-light sRGB channel → gamma-encoded 0–255. */
+	function encodeChannel(linear) {
+		const encoded = linear <= .0031308 ? 12.92 * linear : 1.055 * Math.sign(linear) * Math.abs(linear) ** (1 / 2.4) - .055;
+		return Math.round(clamp01(encoded) * 255);
+	}
+	/** Oklab → linear sRGB (Björn Ottosson's matrices). */
+	function oklabToLinearSrgb(L, a, b) {
+		const l = (L + .3963377774 * a + .2158037573 * b) ** 3;
+		const m = (L - .1055613458 * a - .0638541728 * b) ** 3;
+		const s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
+		return [
+			4.0767416621 * l - 3.3077115913 * m + .2309699292 * s,
+			-1.2684380046 * l + 2.6097574011 * m - .3413193965 * s,
+			-.0041960863 * l - .7034186147 * m + 1.707614701 * s
+		];
+	}
+	/** CIE Lab (D50) → linear sRGB. */
+	function labToLinearSrgb(L, a, b) {
+		const fy = (L + 16) / 116;
+		const fx = fy + a / 500;
+		const fz = fy - b / 200;
+		const EPSILON = 216 / 24389;
+		const KAPPA = 24389 / 27;
+		const cube = (t) => t ** 3 > EPSILON ? t ** 3 : (116 * t - 16) / KAPPA;
+		const x = cube(fx) * (.3457 / .3585);
+		const y = L > KAPPA * EPSILON ? fy ** 3 : L / KAPPA;
+		const z = cube(fz) * (.2958 / .3585);
+		return [
+			3.1341359569 * x - 1.6173352505 * y - .4906619883 * z,
+			-.978795301 * x + 1.9161624668 * y + .0334415019 * z,
+			.0719452637 * x - .2289909604 * y + 1.4052744046 * z
+		];
+	}
+	function hslToRgb(h, s, l) {
+		const hue = (h % 360 + 360) % 360;
+		const c = (1 - Math.abs(2 * l - 1)) * s;
+		const x = c * (1 - Math.abs(hue / 60 % 2 - 1));
+		const m = l - c / 2;
+		const [r, g, b] = hue < 60 ? [
+			c,
+			x,
+			0
+		] : hue < 120 ? [
+			x,
+			c,
+			0
+		] : hue < 180 ? [
+			0,
+			c,
+			x
+		] : hue < 240 ? [
+			0,
+			x,
+			c
+		] : hue < 300 ? [
+			x,
+			0,
+			c
+		] : [
+			c,
+			0,
+			x
+		];
+		return [
+			Math.round((r + m) * 255),
+			Math.round((g + m) * 255),
+			Math.round((b + m) * 255)
+		];
+	}
+	var P3_TO_SRGB = [
+		[
+			1.2249401762,
+			-.2249401762,
+			0
+		],
+		[
+			-.0420569547,
+			1.0420569547,
+			0
+		],
+		[
+			-.0196375546,
+			-.0786360454,
+			1.0982736
+		]
+	];
+	/** Gamma-encoded sRGB/P3 channel → linear light. */
+	function decodeChannel(value) {
+		const abs = Math.abs(value);
+		return abs <= .04045 ? value / 12.92 : Math.sign(value) * ((abs + .055) / 1.055) ** 2.4;
+	}
+	/**
+	* Normalizes any computed color string to `rgba(r, g, b, a)`.
+	* Unrecognized syntaxes return null so the caller can pass the original through.
+	* @param {string} value
+	* @returns {string|null}
+	*/
+	function normalizeColor(value) {
+		if (typeof value !== "string") return null;
+		const input = value.trim();
+		if (!input) return null;
+		if (input === "transparent") return "rgba(0, 0, 0, 0)";
+		const rgbParts = functionArguments(input, "rgba?");
+		if (rgbParts) {
+			const [r, g, b, a] = rgbParts;
+			return format(numberToken(r, 255), numberToken(g, 255), numberToken(b, 255), alphaToken(a));
+		}
+		const hexMatch = input.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+		if (hexMatch) {
+			const hex = hexMatch[1];
+			const wide = hex.length > 4;
+			const size = wide ? 2 : 1;
+			const channel = (index) => {
+				const slice = hex.substr(index * size, size);
+				return parseInt(wide ? slice : slice + slice, 16);
+			};
+			const alpha = hex.length === 4 || hex.length === 8 ? channel(3) / 255 : 1;
+			return format(channel(0), channel(1), channel(2), alpha);
+		}
+		const hslParts = functionArguments(input, "hsla?");
+		if (hslParts) {
+			const [h, s, l, a] = hslParts;
+			const [r, g, b] = hslToRgb(parseFloat(h) || 0, (parseFloat(s) || 0) / 100, (parseFloat(l) || 0) / 100);
+			return format(r, g, b, alphaToken(a));
+		}
+		const oklabParts = functionArguments(input, "oklab");
+		if (oklabParts) {
+			const [L, a, b, alpha] = oklabParts;
+			return fromLinear(oklabToLinearSrgb(numberToken(L, 1), numberToken(a, .4), numberToken(b, .4)), alphaToken(alpha));
+		}
+		const oklchParts = functionArguments(input, "oklch");
+		if (oklchParts) {
+			const [L, C, H, alpha] = oklchParts;
+			const hue = hueToken(H) * Math.PI / 180;
+			const chroma = numberToken(C, .4);
+			return fromLinear(oklabToLinearSrgb(numberToken(L, 1), chroma * Math.cos(hue), chroma * Math.sin(hue)), alphaToken(alpha));
+		}
+		const labParts = functionArguments(input, "lab");
+		if (labParts) {
+			const [L, a, b, alpha] = labParts;
+			return fromLinear(labToLinearSrgb(numberToken(L, 100), numberToken(a, 125), numberToken(b, 125)), alphaToken(alpha));
+		}
+		const lchParts = functionArguments(input, "lch");
+		if (lchParts) {
+			const [L, C, H, alpha] = lchParts;
+			const hue = hueToken(H) * Math.PI / 180;
+			const chroma = numberToken(C, 150);
+			return fromLinear(labToLinearSrgb(numberToken(L, 100), chroma * Math.cos(hue), chroma * Math.sin(hue)), alphaToken(alpha));
+		}
+		const colorParts = functionArguments(input, "color");
+		if (colorParts) {
+			const [space, r, g, b, alpha] = colorParts;
+			const key = String(space).toLowerCase();
+			const channels = [
+				numberToken(r, 1),
+				numberToken(g, 1),
+				numberToken(b, 1)
+			];
+			if (key === "srgb") return format(channels[0] * 255, channels[1] * 255, channels[2] * 255, alphaToken(alpha));
+			if (key === "srgb-linear") return fromLinear(channels, alphaToken(alpha));
+			if (key === "display-p3") {
+				const linearP3 = channels.map(decodeChannel);
+				return fromLinear(P3_TO_SRGB.map((row) => row[0] * linearP3[0] + row[1] * linearP3[1] + row[2] * linearP3[2]), alphaToken(alpha));
+			}
+		}
+		return null;
+	}
+	function fromLinear(linear, alpha) {
+		return `rgba(${encodeChannel(linear[0])}, ${encodeChannel(linear[1])}, ${encodeChannel(linear[2])}, ${round4(alpha)})`;
+	}
+	function format(red, green, blue, alpha) {
+		const channel = (value) => Math.round(Math.min(255, Math.max(0, value)));
+		return `rgba(${channel(red)}, ${channel(green)}, ${channel(blue)}, ${round4(alpha)})`;
+	}
+	function round4(value) {
+		return Math.round(value * 1e4) / 1e4;
+	}
+	/**
+	* Parses a color string into channels, normalizing modern syntaxes first.
+	* @param {string} colorString
+	* @returns {{red: number, green: number, blue: number, alpha: number}}
+	*/
+	function parseColor(colorString) {
+		const normalized = normalizeColor(colorString) ?? colorString;
+		const match = String(normalized).match(/rgba?\(([^)]*)\)/);
+		if (!match) return {
+			red: 0,
+			green: 0,
+			blue: 0,
+			alpha: 1
+		};
+		const parts = match[1].split(",").map((part) => parseFloat(part));
+		return {
+			red: parts[0] || 0,
+			green: parts[1] || 0,
+			blue: parts[2] || 0,
+			alpha: parts.length > 3 ? parts[3] : 1
+		};
+	}
+	//#endregion
+	//#region src/blob-style.js
+	/**
+	* The blob's static base styles — everything that does not come from a keyframe.
+	* Its own module so it can be asserted without a DOM.
+	*/
+	/**
+	* @param {{borderStyle: string}} fromMeasure
+	* @param {{borderStyle: string}} toMeasure
+	* @param {number|string} zIndex
+	* @returns {Object<string, string>} styles to assign to the blob element
+	*/
+	function blobBaseStyle(fromMeasure, toMeasure, zIndex) {
+		const borderStyle = toMeasure.borderStyle !== "none" ? toMeasure.borderStyle : fromMeasure.borderStyle !== "none" ? fromMeasure.borderStyle : "solid";
+		return {
+			position: "fixed",
+			top: "0",
+			left: "0",
+			margin: "0",
+			boxSizing: "border-box",
+			pointerEvents: "none",
+			overflow: "hidden",
+			display: "block",
+			zIndex: String(zIndex),
+			borderWidth: "0",
+			borderColor: "transparent",
+			borderStyle,
+			willChange: "top, left, width, height, opacity"
+		};
+	}
+	//#endregion
+	//#region src/blob-container.js
+	/**
+	* Where the blob lives for a flight. Its own module so the resolution rules can be
+	* asserted without a DOM (see test/blob-container.test.mjs).
+	*
+	* The blob is `position: fixed`, and a fixed element in `<body>` paints UNDER the
+	* browser's top layer — so a flight whose destination is inside (or is) an open
+	* `showModal()` dialog is invisible. Appending the blob into that dialog's subtree
+	* puts it in the same layer as the destination; `container` is how a consumer says
+	* where.
+	*/
+	/**
+	* Resolves the element the blob is appended to for one flight.
+	*
+	* Per-call wins over the engine-level value, and either may be a function — it is
+	* called once per flight, so a consumer can answer "the nearest open modal dialog
+	* of the source, else body" at show time rather than at construction. A nullish
+	* result (or a value that is not an element) falls back, with a warning for the
+	* latter so a typo surfaces instead of silently flying under a dialog.
+	*
+	* @param {Element|(() => Element|null|undefined)|null|undefined} override - Per-call value
+	* @param {Element|(() => Element|null|undefined)|null|undefined} base - Engine-level value
+	* @param {Element} fallback - Used when neither yields an element (`document.body`)
+	* @returns {Element}
+	*/
+	function resolveBlobContainer(override, base, fallback) {
+		const picked = override !== void 0 ? override : base;
+		const value = typeof picked === "function" ? picked() : picked;
+		if (value == null) return fallback;
+		if (!isElement(value)) {
+			console.warn("MorphEngine: `container` must be an Element or a function returning one — falling back to document.body.");
+			return fallback;
+		}
+		return value;
+	}
+	/** Element or close enough — nodeType 1 works for real DOM and any test double. */
+	function isElement(value) {
+		return typeof value === "object" && value.nodeType === 1 && typeof value.appendChild === "function";
+	}
+	//#endregion
+	//#region src/shadow.js
+	/**
+	* Box-shadow capture and interpolation.
+	*
+	* frame-engine snaps multi-value shorthands discretely, so the blob's box-shadow is
+	* lerped here by hand from one parsed shadow per end.
+	*/
+	var COLOR_PATTERN = /(?:rgba?|hsla?|oklab|oklch|lab|lch|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/;
+	/** Splits a comma-separated CSS list on top-level commas only. */
+	function splitList(value) {
+		const parts = [];
+		let depth = 0;
+		let start = 0;
+		for (let i = 0; i < value.length; i++) {
+			const character = value[i];
+			if (character === "(") depth++;
+			else if (character === ")") depth--;
+			else if (character === "," && depth === 0) {
+				parts.push(value.slice(start, i));
+				start = i + 1;
+			}
+		}
+		parts.push(value.slice(start));
+		return parts.map((part) => part.trim()).filter(Boolean);
+	}
+	/** One shadow of a box-shadow list → its parts, plus whether it is an inset. */
+	function parseOneShadow(shadow) {
+		const colorMatch = shadow.match(COLOR_PATTERN);
+		const color = parseColor(colorMatch ? colorMatch[0] : "rgba(0, 0, 0, 1)");
+		const [x = 0, y = 0, blur = 0, spread = 0] = shadow.replace(COLOR_PATTERN, "").trim().split(/\s+/).filter((token) => token !== "inset" && token !== "").map(parseFloat);
+		return {
+			x,
+			y,
+			blur,
+			spread,
+			color,
+			inset: /(^|\s)inset(\s|$)/.test(shadow)
+		};
+	}
+	/**
+	* Parses a computed box-shadow into the one shadow that reads as the element's
+	* lift. A Tailwind shadow utility serializes a LIST whose leading entries are
+	* placeholder `rgba(0, 0, 0, 0)` rings and an inset top lip, so "the first
+	* shadow" is usually invisible — take the first visible outer shadow instead,
+	* falling back to the first outer one, then to the first entry.
+	* Handles both serialization orders (color-first and color-last).
+	* @param {string} computedShadow - Value from getComputedStyle().boxShadow
+	* @returns {{x: number, y: number, blur: number, spread: number, color: Object}|null}
+	*/
+	function parseShadow(computedShadow) {
+		if (!computedShadow || computedShadow === "none") return null;
+		const shadows = splitList(computedShadow).map(parseOneShadow);
+		if (shadows.length === 0) return null;
+		const outer = shadows.filter((shadow) => !shadow.inset);
+		return outer.find((shadow) => shadow.color.alpha > 0) || outer[0] || shadows[0];
+	}
+	/**
+	* Interpolates two parsed shadows at raw p (extrapolates during overshoot,
+	* so the shadow bounces with the geometry). A missing end fades through the
+	* other end's color at alpha 0 to avoid a hue lurch through transparent black.
+	* @param {Object|null} fromShadow
+	* @param {Object|null} toShadow
+	* @param {number} p
+	* @returns {string} A CSS box-shadow value
+	*/
+	function lerpShadow(fromShadow, toShadow, p) {
+		if (!fromShadow && !toShadow) return "none";
+		const zeroed = (other) => ({
+			x: 0,
+			y: 0,
+			blur: 0,
+			spread: 0,
+			color: {
+				...other.color,
+				alpha: 0
+			}
+		});
+		const start = fromShadow || zeroed(toShadow);
+		const end = toShadow || zeroed(fromShadow);
+		const lerp = (a, b) => a + (b - a) * p;
+		return `${round$1(lerp(start.x, end.x))}px ${round$1(lerp(start.y, end.y))}px ${round$1(Math.max(0, lerp(start.blur, end.blur)))}px ${round$1(lerp(start.spread, end.spread))}px rgba(${Math.round(clamp$1(lerp(start.color.red, end.color.red), 0, 255))}, ${Math.round(clamp$1(lerp(start.color.green, end.color.green), 0, 255))}, ${Math.round(clamp$1(lerp(start.color.blue, end.color.blue), 0, 255))}, ${round$1(clamp$1(lerp(start.color.alpha, end.color.alpha), 0, 1))})`;
+	}
+	function clamp$1(value, min, max) {
+		return Math.min(Math.max(value, min), max);
+	}
+	function round$1(value) {
+		return Math.round(value * 100) / 100;
+	}
+	//#endregion
 	//#region src/morph-engine.js
 	var TRAVEL = 1e3;
 	var SETTLE_POSITION_EPSILON = 1;
@@ -1862,85 +2274,6 @@
 	function round(value) {
 		return Math.round(value * 100) / 100;
 	}
-	var COLOR_PATTERN = /rgba?\([^)]*\)/;
-	/**
-	* Parses a computed rgb()/rgba() color string into channels.
-	* Computed styles always serialize sRGB colors this way.
-	* @param {string} colorString
-	* @returns {{red: number, green: number, blue: number, alpha: number}}
-	*/
-	function parseColor(colorString) {
-		const match = colorString.match(/rgba?\(([^)]*)\)/);
-		if (!match) return {
-			red: 0,
-			green: 0,
-			blue: 0,
-			alpha: 1
-		};
-		const parts = match[1].split(",").map((part) => parseFloat(part));
-		return {
-			red: parts[0] || 0,
-			green: parts[1] || 0,
-			blue: parts[2] || 0,
-			alpha: parts.length > 3 ? parts[3] : 1
-		};
-	}
-	/**
-	* Parses a computed box-shadow into its first shadow's parts.
-	* Handles both serialization orders (color-first and color-last).
-	* @param {string} computedShadow - Value from getComputedStyle().boxShadow
-	* @returns {{x: number, y: number, blur: number, spread: number, color: Object}|null}
-	*/
-	function parseShadow(computedShadow) {
-		if (!computedShadow || computedShadow === "none") return null;
-		let first = computedShadow;
-		let depth = 0;
-		for (let i = 0; i < computedShadow.length; i++) {
-			const character = computedShadow[i];
-			if (character === "(") depth++;
-			else if (character === ")") depth--;
-			else if (character === "," && depth === 0) {
-				first = computedShadow.slice(0, i);
-				break;
-			}
-		}
-		const colorMatch = first.match(COLOR_PATTERN);
-		const color = parseColor(colorMatch ? colorMatch[0] : "rgba(0, 0, 0, 1)");
-		const [x = 0, y = 0, blur = 0, spread = 0] = first.replace(COLOR_PATTERN, "").trim().split(/\s+/).filter((token) => token !== "inset" && token !== "").map(parseFloat);
-		return {
-			x,
-			y,
-			blur,
-			spread,
-			color
-		};
-	}
-	/**
-	* Interpolates two parsed shadows at raw p (extrapolates during overshoot,
-	* so the shadow bounces with the geometry). A missing end fades through the
-	* other end's color at alpha 0 to avoid a hue lurch through transparent black.
-	* @param {Object|null} fromShadow
-	* @param {Object|null} toShadow
-	* @param {number} p
-	* @returns {string} A CSS box-shadow value
-	*/
-	function lerpShadow(fromShadow, toShadow, p) {
-		if (!fromShadow && !toShadow) return "none";
-		const zeroed = (other) => ({
-			x: 0,
-			y: 0,
-			blur: 0,
-			spread: 0,
-			color: {
-				...other.color,
-				alpha: 0
-			}
-		});
-		const start = fromShadow || zeroed(toShadow);
-		const end = toShadow || zeroed(fromShadow);
-		const lerp = (a, b) => a + (b - a) * p;
-		return `${round(lerp(start.x, end.x))}px ${round(lerp(start.y, end.y))}px ${round(Math.max(0, lerp(start.blur, end.blur)))}px ${round(lerp(start.spread, end.spread))}px rgba(${Math.round(clamp(lerp(start.color.red, end.color.red), 0, 255))}, ${Math.round(clamp(lerp(start.color.green, end.color.green), 0, 255))}, ${Math.round(clamp(lerp(start.color.blue, end.color.blue), 0, 255))}, ${round(clamp(lerp(start.color.alpha, end.color.alpha), 0, 1))})`;
-	}
 	/**
 	* Shared-element morph engine. A fixed-position blob springs from a source
 	* element's rect and styles to a target element's, dissolving the source's
@@ -1958,6 +2291,11 @@
 		#frames = null;
 		#blob = null;
 		#cloneWrapper = null;
+		#containerOverride = void 0;
+		#fixedOffset = {
+			top: 0,
+			left: 0
+		};
 		#styleProperties;
 		#state = "idle";
 		#p = 0;
@@ -2018,9 +2356,14 @@
 		* @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 		* @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 		*   hidden — a scroll mid-morph would strand the fixed-position blob
-		* @param {number} [options.zIndex=9999] - Blob z-index
+		* @param {number} [options.zIndex=9999] - Blob z-index — competes with the container's
+		*   other children, not the page's
+		* @param {Element|(() => Element|null)} [options.container=document.body] - Element the
+		*   blob is appended to for each flight, or a function returning one (called per flight).
+		*   A fixed blob in body paints under the browser top layer, so a flight into or out of
+		*   an open showModal() dialog must fly inside that dialog's subtree
 		*/
-		constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, cloneFit = "freeze", handoff = "fade", hide = {}, lockScroll = true, zIndex = 9999 } = {}) {
+		constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, cloneFit = "freeze", handoff = "fade", hide = {}, lockScroll = true, zIndex = 9999, container = null } = {}) {
 			super();
 			this.#attraction = attraction;
 			this.#friction = friction;
@@ -2038,6 +2381,7 @@
 			this.hideConfig = hide;
 			this.lockScroll = lockScroll;
 			this.zIndex = zIndex;
+			this.container = container;
 			this.#spring.on("change", ({ position }) => {
 				if (this.#state !== "showing" && this.#state !== "hiding") return;
 				const p = position / TRAVEL;
@@ -2083,9 +2427,11 @@
 		* @param {boolean} [options.cloneContents] - One-off clone-content setting
 		* @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 		* @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
+		* @param {Element|(() => Element|null)} [options.container] - Where the blob is appended
+		*   for this show → hide lifecycle; wins over the constructor's `container`
 		* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 		*/
-		show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff } = {}) {
+		show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff, container } = {}) {
 			const overrides = {
 				attraction,
 				friction,
@@ -2109,6 +2455,7 @@
 			this.#sourceElement = from;
 			this.#targetElement = to;
 			this.#displayOverride = display;
+			this.#containerOverride = container;
 			this.restoreSource();
 			this.#saveInline(from);
 			this.#saveInline(to);
@@ -2192,10 +2539,12 @@
 			this.#removeBlob();
 			const source = this.#sourceElement;
 			const target = this.#targetElement;
-			if (source) if (restoreSource) {
-				this.#restoreInline(source);
-				source.removeAttribute("morphing");
-			} else this.#heldSource = source;
+			if (source) {
+				if (restoreSource) {
+					this.#restoreInline(source);
+					source.removeAttribute("morphing");
+				} else this.#heldSource = source;
+			}
 			if (target) {
 				this.#restoreInline(target);
 				target.removeAttribute("morphing");
@@ -2273,7 +2622,8 @@
 			this.#reconcileBorderColors(fromMeasure, toMeasure);
 			this.#frames = new c(this.#buildKeyframes(fromMeasure, toMeasure));
 			this.#removeBlob();
-			this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
+			const container = resolveBlobContainer(this.#containerOverride, this.container, document.body);
+			this.#createBlob(fromMeasure, toMeasure, config.cloneContents, container);
 			this.#markElements(phase);
 			fromElement.style.transition = "none";
 			toElement.style.transition = "none";
@@ -2464,6 +2814,9 @@
 			const styles = this.#frames.getFrame(p);
 			for (const property of CLAMP_POSITIVE) if (property in styles && parseFloat(styles[property]) < 0) styles[property] = "0px";
 			Object.assign(this.#blob.style, styles);
+			const offset = this.#fixedOffset;
+			if (offset.top !== 0) this.#blob.style.top = `${parseFloat(styles.top) - offset.top}px`;
+			if (offset.left !== 0) this.#blob.style.left = `${parseFloat(styles.left) - offset.left}px`;
 			this.#blob.style.boxShadow = lerpShadow(this.#fromMeasure.shadow, this.#toMeasure.shadow, p);
 			if (this.#cloneWrapper) {
 				const fade = this.#cloneFadeUntil > 0 ? clamp(1 - p / this.#cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
@@ -2610,7 +2963,10 @@
 			const rect = element.getBoundingClientRect();
 			const computed = getComputedStyle(element);
 			const styles = {};
-			for (const property of this.#styleProperties) styles[property] = computed[property];
+			for (const property of this.#styleProperties) {
+				const value = computed[property];
+				styles[property] = /color$/i.test(property) ? normalizeColor(value) ?? value : value;
+			}
 			const measure = {
 				element,
 				rect,
@@ -2682,22 +3038,9 @@
 			setOpacity(blobClear * 100, "0");
 			return frames;
 		}
-		#createBlob(fromMeasure, toMeasure, cloneContents) {
+		#createBlob(fromMeasure, toMeasure, cloneContents, container) {
 			const blob = document.createElement("morph-blob");
-			const borderStyle = toMeasure.borderStyle !== "none" ? toMeasure.borderStyle : fromMeasure.borderStyle !== "none" ? fromMeasure.borderStyle : "solid";
-			Object.assign(blob.style, {
-				position: "fixed",
-				top: "0",
-				left: "0",
-				margin: "0",
-				boxSizing: "border-box",
-				pointerEvents: "none",
-				overflow: "hidden",
-				display: "block",
-				zIndex: String(this.zIndex),
-				borderStyle,
-				willChange: "top, left, width, height, opacity"
-			});
+			Object.assign(blob.style, blobBaseStyle(fromMeasure, toMeasure, this.zIndex));
 			const backdropFilter = toMeasure.backdropFilter !== "none" ? toMeasure.backdropFilter : fromMeasure.backdropFilter !== "none" ? fromMeasure.backdropFilter : null;
 			if (backdropFilter) {
 				blob.style.backdropFilter = backdropFilter;
@@ -2711,8 +3054,13 @@
 				blob.style.backgroundPosition = backgroundMeasure.backgroundPosition;
 			}
 			if (cloneContents) this.#createClone(blob, fromMeasure);
-			document.body.appendChild(blob);
+			container.appendChild(blob);
 			this.#blob = blob;
+			const probe = blob.getBoundingClientRect();
+			this.#fixedOffset = {
+				top: probe.top || 0,
+				left: probe.left || 0
+			};
 		}
 		/**
 		* Freezes a visual copy of the source's content inside the blob. The wrapper
@@ -2764,6 +3112,10 @@
 			this.#blob = null;
 			this.#cloneWrapper = null;
 			this.#cloneReflowSettled = false;
+			this.#fixedOffset = {
+				top: 0,
+				left: 0
+			};
 		}
 		/** Marks both elements for CSS hooks — which one the blob is flying away from. */
 		#markElements(phase) {

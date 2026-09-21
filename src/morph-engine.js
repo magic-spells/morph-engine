@@ -1,6 +1,10 @@
 import PhysicsEngine from '@magic-spells/physics-engine';
 import FrameEngine from '@magic-spells/frame-engine';
 import EventEmitter from './event-emitter.js';
+import { normalizeColor, parseColor } from './color.js';
+import { blobBaseStyle } from './blob-style.js';
+import { resolveBlobContainer } from './blob-container.js';
+import { parseShadow, lerpShadow } from './shadow.js';
 
 // Spring travel distance recommended by physics-engine. All choreography is driven
 // off p = position / TRAVEL — never the change event's own `progress` field, which
@@ -135,96 +139,6 @@ function round(value) {
 	return Math.round(value * 100) / 100;
 }
 
-const COLOR_PATTERN = /rgba?\([^)]*\)/;
-
-/**
- * Parses a computed rgb()/rgba() color string into channels.
- * Computed styles always serialize sRGB colors this way.
- * @param {string} colorString
- * @returns {{red: number, green: number, blue: number, alpha: number}}
- */
-function parseColor(colorString) {
-	const match = colorString.match(/rgba?\(([^)]*)\)/);
-	if (!match) return { red: 0, green: 0, blue: 0, alpha: 1 };
-	const parts = match[1].split(',').map((part) => parseFloat(part));
-	return {
-		red: parts[0] || 0,
-		green: parts[1] || 0,
-		blue: parts[2] || 0,
-		alpha: parts.length > 3 ? parts[3] : 1,
-	};
-}
-
-/**
- * Parses a computed box-shadow into its first shadow's parts.
- * Handles both serialization orders (color-first and color-last).
- * @param {string} computedShadow - Value from getComputedStyle().boxShadow
- * @returns {{x: number, y: number, blur: number, spread: number, color: Object}|null}
- */
-function parseShadow(computedShadow) {
-	if (!computedShadow || computedShadow === 'none') return null;
-
-	// first shadow only — split on the first comma outside parens
-	let first = computedShadow;
-	let depth = 0;
-	for (let i = 0; i < computedShadow.length; i++) {
-		const character = computedShadow[i];
-		if (character === '(') depth++;
-		else if (character === ')') depth--;
-		else if (character === ',' && depth === 0) {
-			first = computedShadow.slice(0, i);
-			break;
-		}
-	}
-
-	const colorMatch = first.match(COLOR_PATTERN);
-	const color = parseColor(colorMatch ? colorMatch[0] : 'rgba(0, 0, 0, 1)');
-	const lengths = first
-		.replace(COLOR_PATTERN, '')
-		.trim()
-		.split(/\s+/)
-		.filter((token) => token !== 'inset' && token !== '')
-		.map(parseFloat);
-	const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
-
-	return { x, y, blur, spread, color };
-}
-
-/**
- * Interpolates two parsed shadows at raw p (extrapolates during overshoot,
- * so the shadow bounces with the geometry). A missing end fades through the
- * other end's color at alpha 0 to avoid a hue lurch through transparent black.
- * @param {Object|null} fromShadow
- * @param {Object|null} toShadow
- * @param {number} p
- * @returns {string} A CSS box-shadow value
- */
-function lerpShadow(fromShadow, toShadow, p) {
-	if (!fromShadow && !toShadow) return 'none';
-
-	const zeroed = (other) => ({
-		x: 0,
-		y: 0,
-		blur: 0,
-		spread: 0,
-		color: { ...other.color, alpha: 0 },
-	});
-	const start = fromShadow || zeroed(toShadow);
-	const end = toShadow || zeroed(fromShadow);
-	const lerp = (a, b) => a + (b - a) * p;
-
-	const x = round(lerp(start.x, end.x));
-	const y = round(lerp(start.y, end.y));
-	const blur = round(Math.max(0, lerp(start.blur, end.blur)));
-	const spread = round(lerp(start.spread, end.spread));
-	const red = Math.round(clamp(lerp(start.color.red, end.color.red), 0, 255));
-	const green = Math.round(clamp(lerp(start.color.green, end.color.green), 0, 255));
-	const blue = Math.round(clamp(lerp(start.color.blue, end.color.blue), 0, 255));
-	const alpha = round(clamp(lerp(start.color.alpha, end.color.alpha), 0, 1));
-
-	return `${x}px ${y}px ${blur}px ${spread}px rgba(${red}, ${green}, ${blue}, ${alpha})`;
-}
-
 /**
  * Shared-element morph engine. A fixed-position blob springs from a source
  * element's rect and styles to a target element's, dissolving the source's
@@ -242,6 +156,11 @@ export class MorphEngine extends EventEmitter {
 	#frames = null;
 	#blob = null;
 	#cloneWrapper = null;
+	// per-lifecycle `container` override from show(); the hide leg flies in the same one
+	#containerOverride = undefined;
+	// viewport → blob-coordinate correction when the container is (or is inside) a
+	// containing block for fixed descendants — see #createBlob
+	#fixedOffset = { top: 0, left: 0 };
 
 	#styleProperties;
 
@@ -312,7 +231,12 @@ export class MorphEngine extends EventEmitter {
 	 * @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 	 * @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	 *   hidden — a scroll mid-morph would strand the fixed-position blob
-	 * @param {number} [options.zIndex=9999] - Blob z-index
+	 * @param {number} [options.zIndex=9999] - Blob z-index — competes with the container's
+	 *   other children, not the page's
+	 * @param {Element|(() => Element|null)} [options.container=document.body] - Element the
+	 *   blob is appended to for each flight, or a function returning one (called per flight).
+	 *   A fixed blob in body paints under the browser top layer, so a flight into or out of
+	 *   an open showModal() dialog must fly inside that dialog's subtree
 	 */
 	constructor({
 		attraction = 0.1,
@@ -327,6 +251,7 @@ export class MorphEngine extends EventEmitter {
 		hide = {},
 		lockScroll = true,
 		zIndex = 9999,
+		container = null,
 	} = {}) {
 		super();
 
@@ -344,6 +269,7 @@ export class MorphEngine extends EventEmitter {
 		this.hideConfig = hide;
 		this.lockScroll = lockScroll;
 		this.zIndex = zIndex;
+		this.container = container;
 
 		this.#spring.on('change', ({ position }) => {
 			if (this.#state !== 'showing' && this.#state !== 'hiding') return;
@@ -402,6 +328,8 @@ export class MorphEngine extends EventEmitter {
 	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
 	 * @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 	 * @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
+	 * @param {Element|(() => Element|null)} [options.container] - Where the blob is appended
+	 *   for this show → hide lifecycle; wins over the constructor's `container`
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
 	show({
@@ -417,6 +345,7 @@ export class MorphEngine extends EventEmitter {
 		cloneContents,
 		cloneFit,
 		handoff,
+		container,
 	} = {}) {
 		const overrides = {
 			attraction,
@@ -443,6 +372,7 @@ export class MorphEngine extends EventEmitter {
 		this.#sourceElement = from;
 		this.#targetElement = to;
 		this.#displayOverride = display;
+		this.#containerOverride = container;
 		// A source held by stop({ restoreSource: false }) belongs to the previous
 		// flight, and its inline styles are the morph's own. Releasing it here is
 		// what stops #saveInline from snapshotting those hidden styles as though
@@ -657,7 +587,10 @@ export class MorphEngine extends EventEmitter {
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
 
 		this.#removeBlob();
-		this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
+		// resolved per flight — a function form answers for the pair in hand (e.g. the
+		// source's nearest open modal dialog), and the hide leg lands in the same place
+		const container = resolveBlobContainer(this.#containerOverride, this.container, document.body);
+		this.#createBlob(fromMeasure, toMeasure, config.cloneContents, container);
 		this.#markElements(phase);
 
 		// transitions on the real elements would fight the per-frame writes
@@ -885,6 +818,11 @@ export class MorphEngine extends EventEmitter {
 		}
 
 		Object.assign(this.#blob.style, styles);
+		// `styles.top/left` stay in viewport space for the mirror transforms below; only
+		// the blob's own writes are shifted into its containing block's space
+		const offset = this.#fixedOffset;
+		if (offset.top !== 0) this.#blob.style.top = `${parseFloat(styles.top) - offset.top}px`;
+		if (offset.left !== 0) this.#blob.style.left = `${parseFloat(styles.left) - offset.left}px`;
 		this.#blob.style.boxShadow = lerpShadow(this.#fromMeasure.shadow, this.#toMeasure.shadow, p);
 
 		if (this.#cloneWrapper) {
@@ -1095,7 +1033,15 @@ export class MorphEngine extends EventEmitter {
 		const computed = getComputedStyle(element);
 		const styles = {};
 		for (const property of this.#styleProperties) {
-			styles[property] = computed[property];
+			const value = computed[property];
+			// Colors are normalized to rgba() here, at the only point they enter the
+			// pipeline. Chrome serializes a Tailwind opacity modifier
+			// (color-mix(in oklab, …)) as `oklab(L a b / a)`, which frame-engine does
+			// not recognize as a color: pair one with a legacy rgb() at the other end
+			// and it interpolates to `rgb(NaN,NaN,NaN)`, an invalid value the CSSOM
+			// drops — the blob's border then falls back to currentColor and paints an
+			// opaque line for the whole flight.
+			styles[property] = /color$/i.test(property) ? (normalizeColor(value) ?? value) : value;
 		}
 		const measure = {
 			element,
@@ -1192,28 +1138,9 @@ export class MorphEngine extends EventEmitter {
 		return frames;
 	}
 
-	#createBlob(fromMeasure, toMeasure, cloneContents) {
+	#createBlob(fromMeasure, toMeasure, cloneContents, container) {
 		const blob = document.createElement('morph-blob');
-		const borderStyle =
-			toMeasure.borderStyle !== 'none'
-				? toMeasure.borderStyle
-				: fromMeasure.borderStyle !== 'none'
-					? fromMeasure.borderStyle
-					: 'solid';
-
-		Object.assign(blob.style, {
-			position: 'fixed',
-			top: '0',
-			left: '0',
-			margin: '0',
-			boxSizing: 'border-box',
-			pointerEvents: 'none',
-			overflow: 'hidden',
-			display: 'block',
-			zIndex: String(this.zIndex),
-			borderStyle,
-			willChange: 'top, left, width, height, opacity',
-		});
+		Object.assign(blob.style, blobBaseStyle(fromMeasure, toMeasure, this.zIndex));
 
 		// Glass/texture surfaces (backdrop blur, gradient/image fills) have no
 		// meaningful midpoint, so they ride statically through the flight rather than
@@ -1245,8 +1172,25 @@ export class MorphEngine extends EventEmitter {
 
 		if (cloneContents) this.#createClone(blob, fromMeasure);
 
-		document.body.appendChild(blob);
+		container.appendChild(blob);
 		this.#blob = blob;
+
+		// The keyframes are viewport rects and the blob is position: fixed, which only
+		// agree while the blob's containing block is the viewport. A container that is —
+		// or sits inside — an element with `transform`, `filter`, `backdrop-filter`,
+		// `perspective`, `contain: paint | layout`, `will-change: transform`, … becomes
+		// the containing block for its fixed descendants, and the blob's top/left are
+		// then measured from that box's padding edge instead. The blob is at top/left 0
+		// right now, so where it actually landed IS that offset, whatever caused it:
+		// one layout read per flight, in the same pass as the two element measures,
+		// and it stays correct as browsers add properties to that list (a computed-
+		// style walk would need re-auditing each time). Only a translation can be
+		// undone this way — a scaled or rotated containing block scales or rotates the
+		// blob with it, which is documented as a consumer requirement. Measured once
+		// per flight: a flight's geometry is a snapshot of measure time anyway, and the
+		// mirror transforms on the real elements stay in viewport space untouched.
+		const probe = blob.getBoundingClientRect();
+		this.#fixedOffset = { top: probe.top || 0, left: probe.left || 0 };
 	}
 
 	/**
@@ -1302,6 +1246,7 @@ export class MorphEngine extends EventEmitter {
 		this.#blob = null;
 		this.#cloneWrapper = null;
 		this.#cloneReflowSettled = false;
+		this.#fixedOffset = { top: 0, left: 0 };
 	}
 
 	/** Marks both elements for CSS hooks — which one the blob is flying away from. */

@@ -1,6 +1,6 @@
 {
 	"name": "@magic-spells/morph-engine",
-	"version": "0.4.0",
+	"version": "0.4.2",
 	"description": "Shared-element morph engine — a spring-driven blob morphs from a source element's rect and styles to a target's, so UI grows out of what you clicked",
 	"author": "Cory Schulz",
 	"license": "MIT",
@@ -42,7 +42,8 @@
 		"dev": "NODE_ENV=development node scripts/build.mjs",
 		"lint": "eslint src/ scripts/",
 		"format": "prettier --write .",
-		"prepublishOnly": "npm run build"
+		"prepublishOnly": "npm run build",
+		"test": "node --test test/*.test.mjs"
 	},
 	"publishConfig": {
 		"access": "public",

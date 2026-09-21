@@ -3,6 +3,7 @@ import FrameEngine from '@magic-spells/frame-engine';
 import EventEmitter from './event-emitter.js';
 import { normalizeColor, parseColor } from './color.js';
 import { blobBaseStyle } from './blob-style.js';
+import { resolveBlobContainer } from './blob-container.js';
 import { parseShadow, lerpShadow } from './shadow.js';
 
 // Spring travel distance recommended by physics-engine. All choreography is driven
@@ -155,6 +156,11 @@ export class MorphEngine extends EventEmitter {
 	#frames = null;
 	#blob = null;
 	#cloneWrapper = null;
+	// per-lifecycle `container` override from show(); the hide leg flies in the same one
+	#containerOverride = undefined;
+	// viewport → blob-coordinate correction when the container is (or is inside) a
+	// containing block for fixed descendants — see #createBlob
+	#fixedOffset = { top: 0, left: 0 };
 
 	#styleProperties;
 
@@ -225,7 +231,12 @@ export class MorphEngine extends EventEmitter {
 	 * @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 	 * @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	 *   hidden — a scroll mid-morph would strand the fixed-position blob
-	 * @param {number} [options.zIndex=9999] - Blob z-index
+	 * @param {number} [options.zIndex=9999] - Blob z-index — competes with the container's
+	 *   other children, not the page's
+	 * @param {Element|(() => Element|null)} [options.container=document.body] - Element the
+	 *   blob is appended to for each flight, or a function returning one (called per flight).
+	 *   A fixed blob in body paints under the browser top layer, so a flight into or out of
+	 *   an open showModal() dialog must fly inside that dialog's subtree
 	 */
 	constructor({
 		attraction = 0.1,
@@ -240,6 +251,7 @@ export class MorphEngine extends EventEmitter {
 		hide = {},
 		lockScroll = true,
 		zIndex = 9999,
+		container = null,
 	} = {}) {
 		super();
 
@@ -257,6 +269,7 @@ export class MorphEngine extends EventEmitter {
 		this.hideConfig = hide;
 		this.lockScroll = lockScroll;
 		this.zIndex = zIndex;
+		this.container = container;
 
 		this.#spring.on('change', ({ position }) => {
 			if (this.#state !== 'showing' && this.#state !== 'hiding') return;
@@ -315,6 +328,8 @@ export class MorphEngine extends EventEmitter {
 	 * @param {boolean} [options.cloneContents] - One-off clone-content setting
 	 * @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 	 * @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
+	 * @param {Element|(() => Element|null)} [options.container] - Where the blob is appended
+	 *   for this show → hide lifecycle; wins over the constructor's `container`
 	 * @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	 */
 	show({
@@ -330,6 +345,7 @@ export class MorphEngine extends EventEmitter {
 		cloneContents,
 		cloneFit,
 		handoff,
+		container,
 	} = {}) {
 		const overrides = {
 			attraction,
@@ -356,6 +372,7 @@ export class MorphEngine extends EventEmitter {
 		this.#sourceElement = from;
 		this.#targetElement = to;
 		this.#displayOverride = display;
+		this.#containerOverride = container;
 		// A source held by stop({ restoreSource: false }) belongs to the previous
 		// flight, and its inline styles are the morph's own. Releasing it here is
 		// what stops #saveInline from snapshotting those hidden styles as though
@@ -570,7 +587,10 @@ export class MorphEngine extends EventEmitter {
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
 
 		this.#removeBlob();
-		this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
+		// resolved per flight — a function form answers for the pair in hand (e.g. the
+		// source's nearest open modal dialog), and the hide leg lands in the same place
+		const container = resolveBlobContainer(this.#containerOverride, this.container, document.body);
+		this.#createBlob(fromMeasure, toMeasure, config.cloneContents, container);
 		this.#markElements(phase);
 
 		// transitions on the real elements would fight the per-frame writes
@@ -798,6 +818,11 @@ export class MorphEngine extends EventEmitter {
 		}
 
 		Object.assign(this.#blob.style, styles);
+		// `styles.top/left` stay in viewport space for the mirror transforms below; only
+		// the blob's own writes are shifted into its containing block's space
+		const offset = this.#fixedOffset;
+		if (offset.top !== 0) this.#blob.style.top = `${parseFloat(styles.top) - offset.top}px`;
+		if (offset.left !== 0) this.#blob.style.left = `${parseFloat(styles.left) - offset.left}px`;
 		this.#blob.style.boxShadow = lerpShadow(this.#fromMeasure.shadow, this.#toMeasure.shadow, p);
 
 		if (this.#cloneWrapper) {
@@ -1113,7 +1138,7 @@ export class MorphEngine extends EventEmitter {
 		return frames;
 	}
 
-	#createBlob(fromMeasure, toMeasure, cloneContents) {
+	#createBlob(fromMeasure, toMeasure, cloneContents, container) {
 		const blob = document.createElement('morph-blob');
 		Object.assign(blob.style, blobBaseStyle(fromMeasure, toMeasure, this.zIndex));
 
@@ -1147,8 +1172,25 @@ export class MorphEngine extends EventEmitter {
 
 		if (cloneContents) this.#createClone(blob, fromMeasure);
 
-		document.body.appendChild(blob);
+		container.appendChild(blob);
 		this.#blob = blob;
+
+		// The keyframes are viewport rects and the blob is position: fixed, which only
+		// agree while the blob's containing block is the viewport. A container that is —
+		// or sits inside — an element with `transform`, `filter`, `backdrop-filter`,
+		// `perspective`, `contain: paint | layout`, `will-change: transform`, … becomes
+		// the containing block for its fixed descendants, and the blob's top/left are
+		// then measured from that box's padding edge instead. The blob is at top/left 0
+		// right now, so where it actually landed IS that offset, whatever caused it:
+		// one layout read per flight, in the same pass as the two element measures,
+		// and it stays correct as browsers add properties to that list (a computed-
+		// style walk would need re-auditing each time). Only a translation can be
+		// undone this way — a scaled or rotated containing block scales or rotates the
+		// blob with it, which is documented as a consumer requirement. Measured once
+		// per flight: a flight's geometry is a snapshot of measure time anyway, and the
+		// mirror transforms on the real elements stay in viewport space untouched.
+		const probe = blob.getBoundingClientRect();
+		this.#fixedOffset = { top: probe.top || 0, left: probe.left || 0 };
 	}
 
 	/**
@@ -1204,6 +1246,7 @@ export class MorphEngine extends EventEmitter {
 		this.#blob = null;
 		this.#cloneWrapper = null;
 		this.#cloneReflowSettled = false;
+		this.#fixedOffset = { top: 0, left: 0 };
 	}
 
 	/** Marks both elements for CSS hooks — which one the blob is flying away from. */

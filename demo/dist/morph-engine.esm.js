@@ -349,6 +349,46 @@ function blobBaseStyle(fromMeasure, toMeasure, zIndex) {
 	};
 }
 //#endregion
+//#region src/blob-container.js
+/**
+* Where the blob lives for a flight. Its own module so the resolution rules can be
+* asserted without a DOM (see test/blob-container.test.mjs).
+*
+* The blob is `position: fixed`, and a fixed element in `<body>` paints UNDER the
+* browser's top layer — so a flight whose destination is inside (or is) an open
+* `showModal()` dialog is invisible. Appending the blob into that dialog's subtree
+* puts it in the same layer as the destination; `container` is how a consumer says
+* where.
+*/
+/**
+* Resolves the element the blob is appended to for one flight.
+*
+* Per-call wins over the engine-level value, and either may be a function — it is
+* called once per flight, so a consumer can answer "the nearest open modal dialog
+* of the source, else body" at show time rather than at construction. A nullish
+* result (or a value that is not an element) falls back, with a warning for the
+* latter so a typo surfaces instead of silently flying under a dialog.
+*
+* @param {Element|(() => Element|null|undefined)|null|undefined} override - Per-call value
+* @param {Element|(() => Element|null|undefined)|null|undefined} base - Engine-level value
+* @param {Element} fallback - Used when neither yields an element (`document.body`)
+* @returns {Element}
+*/
+function resolveBlobContainer(override, base, fallback) {
+	const picked = override !== void 0 ? override : base;
+	const value = typeof picked === "function" ? picked() : picked;
+	if (value == null) return fallback;
+	if (!isElement(value)) {
+		console.warn("MorphEngine: `container` must be an Element or a function returning one — falling back to document.body.");
+		return fallback;
+	}
+	return value;
+}
+/** Element or close enough — nodeType 1 works for real DOM and any test double. */
+function isElement(value) {
+	return typeof value === "object" && value.nodeType === 1 && typeof value.appendChild === "function";
+}
+//#endregion
 //#region src/shadow.js
 /**
 * Box-shadow capture and interpolation.
@@ -557,6 +597,11 @@ var MorphEngine = class extends EventEmitter {
 	#frames = null;
 	#blob = null;
 	#cloneWrapper = null;
+	#containerOverride = void 0;
+	#fixedOffset = {
+		top: 0,
+		left: 0
+	};
 	#styleProperties;
 	#state = "idle";
 	#p = 0;
@@ -617,9 +662,14 @@ var MorphEngine = class extends EventEmitter {
 	* @param {'fade'|'hard'} [options.hide.handoff] - Hide handoff mode
 	* @param {boolean} [options.lockScroll=true] - Lock body scroll from show until fully
 	*   hidden — a scroll mid-morph would strand the fixed-position blob
-	* @param {number} [options.zIndex=9999] - Blob z-index
+	* @param {number} [options.zIndex=9999] - Blob z-index — competes with the container's
+	*   other children, not the page's
+	* @param {Element|(() => Element|null)} [options.container=document.body] - Element the
+	*   blob is appended to for each flight, or a function returning one (called per flight).
+	*   A fixed blob in body paints under the browser top layer, so a flight into or out of
+	*   an open showModal() dialog must fly inside that dialog's subtree
 	*/
-	constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, cloneFit = "freeze", handoff = "fade", hide = {}, lockScroll = true, zIndex = 9999 } = {}) {
+	constructor({ attraction = .1, friction = .32, styleProperties = DEFAULT_STYLE_PROPERTIES, revealAt = .75, sourceRevealUntil = .25, cloneFadeUntil = .25, cloneContents = true, cloneFit = "freeze", handoff = "fade", hide = {}, lockScroll = true, zIndex = 9999, container = null } = {}) {
 		super();
 		this.#attraction = attraction;
 		this.#friction = friction;
@@ -637,6 +687,7 @@ var MorphEngine = class extends EventEmitter {
 		this.hideConfig = hide;
 		this.lockScroll = lockScroll;
 		this.zIndex = zIndex;
+		this.container = container;
 		this.#spring.on("change", ({ position }) => {
 			if (this.#state !== "showing" && this.#state !== "hiding") return;
 			const p = position / TRAVEL;
@@ -682,9 +733,11 @@ var MorphEngine = class extends EventEmitter {
 	* @param {boolean} [options.cloneContents] - One-off clone-content setting
 	* @param {'freeze'|'scale'|'reflow'} [options.cloneFit] - One-off clone sizing mode
 	* @param {'fade'|'hard'} [options.handoff] - One-off handoff mode
+	* @param {Element|(() => Element|null)} [options.container] - Where the blob is appended
+	*   for this show → hide lifecycle; wins over the constructor's `container`
 	* @returns {Promise<boolean>} true when settled, false if superseded or rejected
 	*/
-	show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff } = {}) {
+	show({ from, to, display = null, oneWay = false, attraction, friction, revealAt, sourceRevealUntil, cloneFadeUntil, cloneContents, cloneFit, handoff, container } = {}) {
 		const overrides = {
 			attraction,
 			friction,
@@ -708,6 +761,7 @@ var MorphEngine = class extends EventEmitter {
 		this.#sourceElement = from;
 		this.#targetElement = to;
 		this.#displayOverride = display;
+		this.#containerOverride = container;
 		this.restoreSource();
 		this.#saveInline(from);
 		this.#saveInline(to);
@@ -874,7 +928,8 @@ var MorphEngine = class extends EventEmitter {
 		this.#reconcileBorderColors(fromMeasure, toMeasure);
 		this.#frames = new FrameEngine(this.#buildKeyframes(fromMeasure, toMeasure));
 		this.#removeBlob();
-		this.#createBlob(fromMeasure, toMeasure, config.cloneContents);
+		const container = resolveBlobContainer(this.#containerOverride, this.container, document.body);
+		this.#createBlob(fromMeasure, toMeasure, config.cloneContents, container);
 		this.#markElements(phase);
 		fromElement.style.transition = "none";
 		toElement.style.transition = "none";
@@ -1065,6 +1120,9 @@ var MorphEngine = class extends EventEmitter {
 		const styles = this.#frames.getFrame(p);
 		for (const property of CLAMP_POSITIVE) if (property in styles && parseFloat(styles[property]) < 0) styles[property] = "0px";
 		Object.assign(this.#blob.style, styles);
+		const offset = this.#fixedOffset;
+		if (offset.top !== 0) this.#blob.style.top = `${parseFloat(styles.top) - offset.top}px`;
+		if (offset.left !== 0) this.#blob.style.left = `${parseFloat(styles.left) - offset.left}px`;
 		this.#blob.style.boxShadow = lerpShadow(this.#fromMeasure.shadow, this.#toMeasure.shadow, p);
 		if (this.#cloneWrapper) {
 			const fade = this.#cloneFadeUntil > 0 ? clamp(1 - p / this.#cloneFadeUntil, 0, 1) : p <= 0 ? 1 : 0;
@@ -1286,7 +1344,7 @@ var MorphEngine = class extends EventEmitter {
 		setOpacity(blobClear * 100, "0");
 		return frames;
 	}
-	#createBlob(fromMeasure, toMeasure, cloneContents) {
+	#createBlob(fromMeasure, toMeasure, cloneContents, container) {
 		const blob = document.createElement("morph-blob");
 		Object.assign(blob.style, blobBaseStyle(fromMeasure, toMeasure, this.zIndex));
 		const backdropFilter = toMeasure.backdropFilter !== "none" ? toMeasure.backdropFilter : fromMeasure.backdropFilter !== "none" ? fromMeasure.backdropFilter : null;
@@ -1302,8 +1360,13 @@ var MorphEngine = class extends EventEmitter {
 			blob.style.backgroundPosition = backgroundMeasure.backgroundPosition;
 		}
 		if (cloneContents) this.#createClone(blob, fromMeasure);
-		document.body.appendChild(blob);
+		container.appendChild(blob);
 		this.#blob = blob;
+		const probe = blob.getBoundingClientRect();
+		this.#fixedOffset = {
+			top: probe.top || 0,
+			left: probe.left || 0
+		};
 	}
 	/**
 	* Freezes a visual copy of the source's content inside the blob. The wrapper
@@ -1355,6 +1418,10 @@ var MorphEngine = class extends EventEmitter {
 		this.#blob = null;
 		this.#cloneWrapper = null;
 		this.#cloneReflowSettled = false;
+		this.#fixedOffset = {
+			top: 0,
+			left: 0
+		};
 	}
 	/** Marks both elements for CSS hooks — which one the blob is flying away from. */
 	#markElements(phase) {

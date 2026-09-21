@@ -53,9 +53,45 @@ new MorphEngine({
 	},
 	lockScroll: true,        // lock body scroll from show until fully hidden
 	zIndex: 9999,            // blob z-index
+	container: undefined,    // Element (or () => Element) the blob is appended to — default document.body
 	styleProperties: [...]   // computed styles to capture and morph (camelCase longhands)
 });
 ```
+
+## Flying inside a modal dialog: `container`
+
+The blob is `position: fixed` and, by default, a child of `<body>`. Anything in the browser's
+**top layer** — an open `showModal()` dialog, a popover — paints above every fixed element in
+body, so a flight whose destination is inside (or is) an open modal is invisible: the target
+reveals fine, the blob flying toward it doesn't. `container` puts the blob inside that dialog's
+subtree instead, so it shares the dialog's layer:
+
+```js
+// engine-wide, resolved per flight — "the source's nearest open modal, else body"
+const morph = new MorphEngine({
+	container: () => source.closest('dialog:modal'),
+});
+
+// or per call (wins over the constructor's value for that show → hide lifecycle)
+await morph.show({ from: thumb, to: lightbox, container: taskDialog });
+```
+
+- Accepts an `Element` or a function returning one. A function is called once per flight, so the
+  answer can depend on what is open at show time. A nullish result falls back to `document.body`.
+- The hide leg flies in the same container as its show leg.
+- The blob is appended for the whole flight and removed on settle, `stop()` and `complete()`
+  exactly as before; the clone, proxy, events and promise semantics are unchanged.
+- `lockScroll` still locks `document.body` — the page under the dialog stays put either way.
+- `zIndex` keeps its meaning but its competition changes: inside a dialog the blob stacks against
+  the dialog's other children, not the page's. The default `9999` is fine in most dialogs.
+- If the container — or any ancestor of it — has a `transform`, `filter`, `backdrop-filter`,
+  `perspective`, `contain: paint | layout` or `will-change: transform`, it becomes the containing
+  block for fixed descendants and the blob's coordinates would be relative to it instead of the
+  viewport. The engine measures that offset once per flight (where a `top: 0; left: 0` blob
+  actually lands inside the container) and compensates, so a `transform: translate(…)`-centred
+  dialog Just Works. Only a translation can be undone this way: a container that is scaled or
+  rotated will scale or rotate the blob with it — keep those transforms off the blob's
+  ancestors, or fly in body.
 
 ## Animating in and out differently
 
@@ -215,18 +251,19 @@ already in flight; only the spring dials change direction.
 
 ## API
 
-| Member                                                | Description                                                                                                                                                                                                                                                                                                           |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show({ from, to, display?, oneWay?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`. `...overrides` accepts any of the eight directional keys.                                                                   |
-| `hide({ ...overrides }?)`                             | Morph back (remembers the pair, re-measures both). Same promise semantics and the same one-off overrides; no-argument `hide()` remains supported.                                                                                                                                                                     |
-| `complete({ restoreSource? })`                        | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.             |
-| `stop({ restoreSource? })`                            | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over. |
-| `restoreSource()`                                     | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                             |
-| `destroy()`                                           | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                  |
-| `setAttraction(n)` / `setFriction(n)`                 | Live spring tuning that also updates the show/default setting. Does not touch `hideConfig`.                                                                                                                                                                                                                           |
-| `hideConfig`                                          | Mutable sparse bag of hide-leg overrides (the constructor's `hide` option).                                                                                                                                                                                                                                           |
-| `state`                                               | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                          |
-| `progress`                                            | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                               |
+| Member                                                            | Description                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show({ from, to, display?, oneWay?, container?, ...overrides })` | Morph from → to. Resolves `true` on settle, `false` if superseded. `display` is applied if `to` is `display: none` at measure time. `oneWay: true` completes automatically after `shown`. `container` is where the blob is appended for this lifecycle (see above). `...overrides` accepts any of the eight directional keys. |
+| `hide({ ...overrides }?)`                                         | Morph back (remembers the pair, re-measures both). Same promise semantics and the same one-off overrides; no-argument `hide()` remains supported.                                                                                                                                                                             |
+| `complete({ restoreSource? })`                                    | Permanently hand a shown/showing flight to the target. The target keeps its inline visible/display state and loses `morph-shown`; the engine returns to `idle`. By default the source stays hidden because the app now owns or destroys it. `restoreSource: true` restores it instead. Returns a boolean.                     |
+| `stop({ restoreSource? })`                                        | Abort and restore both elements to their pre-show resting state. `restoreSource: false` makes it a **handoff** instead — the blob goes and the target is restored, but the source stays hidden and keeps its `morphing` mark, because a morph still owns it. Use it when another animation is taking the flight over.         |
+| `restoreSource()`                                                 | Restore a source held back by `stop({ restoreSource: false })`. Idempotent, safe on a detached element, and called automatically by `show()` and `destroy()` so a held source never leaks into a later flight. Returns `true` when it restored something.                                                                     |
+| `destroy()`                                                       | `stop()` + `restoreSource()` + remove all listeners.                                                                                                                                                                                                                                                                          |
+| `setAttraction(n)` / `setFriction(n)`                             | Live spring tuning that also updates the show/default setting. Does not touch `hideConfig`.                                                                                                                                                                                                                                   |
+| `hideConfig`                                                      | Mutable sparse bag of hide-leg overrides (the constructor's `hide` option).                                                                                                                                                                                                                                                   |
+| `container`                                                       | Public field mirroring the constructor's `container` option — an `Element` or `() => Element`, read fresh at the start of each flight.                                                                                                                                                                                        |
+| `state`                                                           | `'idle' \| 'showing' \| 'shown' \| 'hiding'`                                                                                                                                                                                                                                                                                  |
+| `progress`                                                        | Last-known progress (overshoots past 1 while settling).                                                                                                                                                                                                                                                                       |
 
 ## Events
 
@@ -317,7 +354,7 @@ flights have no closed-form position-at-time.
   same way at their two sizes (fluid pictures, fixed text); a destination that changes the
   layout rules (a caption moved out of flow, a different font size) still lands on it, but the
   clone shows the origin's layout on the way.
-- Native `<dialog>`/popover top layer paints above the blob — fly them in normal flow and promote on the `reveal` event (destination is still at opacity 0 there; the demo's modal-handoff section is the reference pattern), or wait for the planned popover-API blob.
+- Native `<dialog>`/popover top layer paints above a blob in body. Two answers: to land _in_ a modal, fly it in normal flow and promote on the `reveal` event (destination is still at opacity 0 there; the demo's modal-handoff section is the reference pattern); to fly _inside_ an already-open modal, give the engine a `container` inside that dialog (see above). A popover-API blob that lives in the top layer itself remains a possible future.
 
 ## Demo
 

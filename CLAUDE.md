@@ -11,6 +11,7 @@ Shared-element morph engine ("container transform"). A fixed-position `<morph-bl
 - `src/color.js` — color normalization: every captured color becomes `rgba()` before it reaches frame-engine (see Gotchas)
 - `src/shadow.js` — box-shadow capture (`parseShadow`) and the manual first-shadow lerp (`lerpShadow`)
 - `src/blob-style.js` — the blob's static base styles, split out so they can be asserted without a DOM
+- `src/blob-container.js` — resolves the `container` option (per-call over engine-level, function form evaluated per flight, falls back to body); the fixed-position containing-block offset it pairs with is probed in `#createBlob`
 - `src/event-emitter.js` — vendored copy of physics-engine's EventEmitter
 - `demo/index.html` — dark demo: task cards → detail panel, dropdown trigger → options, asymmetric Parameter Lab, the continuous photo morph (`cloneFit: 'scale'` + `cloneFadeUntil: Infinity`, with a fade/hard `handoff` toggle), the mixed-content card morph (`cloneFit: 'reflow'` — picture + fixed-size caption), and the MorphGroup stage (tiles fly up staggered, Reset returns them reverse-order; manual flight demos `complete()`). Script tag carries `?v=8` — bump it if the browser serves a stale dev build
 - `scripts/build.mjs` — Vite 8/rolldown build (split-panel pattern, no CSS): ESM externalizes the two engine deps; UMD bundles them (global `MorphEngine`, so the class is `MorphEngine.MorphEngine`)

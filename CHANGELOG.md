@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.2
+
+### Added
+
+- **`container`** — where the `<morph-blob>` is appended for a flight: an `Element` or a
+  function returning one (called once per flight), as a constructor option and as a per-call
+  override on `show()` (per-call wins; the hide leg flies in the same container as its show).
+  Default `document.body`, so nothing changes unless you set it. A fixed blob in body paints
+  under the browser top layer, which made any flight whose destination sits inside an open
+  `showModal()` dialog invisible; a container inside that dialog's subtree puts the blob in the
+  same layer. `lockScroll` still locks `document.body`, and `zIndex` keeps its number semantics
+  but now competes with the container's children.
+- When the container (or an ancestor) is a containing block for fixed descendants — `transform`,
+  `filter`, `backdrop-filter`, `perspective`, `contain: paint | layout`, `will-change:
+transform` — the blob's `top`/`left` would be relative to that box rather than the viewport.
+  The engine probes where a `top: 0; left: 0` blob actually lands inside the container once
+  per flight and subtracts that offset, so a `transform`-centred dialog needs no extra care. A
+  scaled or rotated containing block still scales or rotates the blob with it (documented).
+
 ## 0.4.1
 
 ### Fixed
